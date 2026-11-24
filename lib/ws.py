@@ -15,6 +15,7 @@ import hashlib
 import json
 import socket
 import struct
+import time
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -39,11 +40,46 @@ def accept_key(client_key):
 
 
 class WSConnection(object):
-    def __init__(self, sock, rfile, wfile):
+    def __init__(self, sock, rfile=None, wfile=None):
         self.sock = sock
-        self.rfile = rfile
-        self.wfile = wfile
+        self.wfile = wfile or sock.makefile("wb")
         self.closed = False
+        # 自己的读缓冲区：不借用 http.server 的 rfile。
+        # rfile 是缓冲读取器，socket 一旦超时它就会永久失效
+        # （OSError: cannot read from timed out object），而连接空闲时的
+        # 保活探测必然要超时——用它读会把健康连接读死。
+        self._rbuf = bytearray()
+        self._wlock = _new_lock()
+        # 最近一次收到任何字节的时间：用于判断链路是否还活着。
+        # 只看「有没有收到 JSON 消息」会误判：MV3 的 service worker 被
+        # 节流时 pong 会晚到，但 TCP 其实一直是通的。
+        self.last_rx = time.time()
+        if rfile is not None:
+            self._adopt(rfile)
+
+    def _adopt(self, rfile):
+        """接管 http 层可能已经读进缓冲区的字节。
+
+        升级请求的头部由 http.server 缓冲读入；如果客户端把第一帧紧跟在
+        握手后面发来，那部分字节已经在 rfile 的缓冲区里，直接读裸 socket
+        会丢掉它们。这里用 5ms 的短超时把缓冲区抽干——缓冲区为空时这次
+        读取会立刻超时返回，相当于一次可忽略的探测。
+        """
+        try:
+            self.sock.settimeout(0.005)
+            while True:
+                chunk = rfile.read1(65536)
+                if not chunk:
+                    break
+                self._rbuf += chunk
+        except Exception:
+            # 缓冲区已空（超时）或连接已结束，都属正常
+            pass
+        finally:
+            try:
+                self.sock.settimeout(None)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ 握手
     def handshake(self, headers):
@@ -60,35 +96,45 @@ class WSConnection(object):
         self.wfile.flush()
 
     # ------------------------------------------------------------------ 读取
-    def _read_exact(self, size, timeout=None):
-        if timeout is not None:
+    def _read_exact(self, size, deadline=None, sink=None):
+        """读满 size 字节；deadline 是绝对时间戳，到点抛 socket.timeout。
+
+        sink 会累积本次调用实际从缓冲区取走的字节，用于超时后回滚。
+        """
+        while len(self._rbuf) < size:
+            timeout = None
+            if deadline is not None:
+                timeout = deadline - time.time()
+                if timeout <= 0:
+                    raise socket.timeout("ws read timeout")
             self.sock.settimeout(timeout)
-        chunks = []
-        remaining = size
-        while remaining > 0:
-            chunk = self.rfile.read(remaining)
+            chunk = self.sock.recv(65536)
             if not chunk:
                 raise WSError("connection closed")
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        return b"".join(chunks)
+            self._rbuf += chunk
+            self.last_rx = time.time()
+        data = bytes(self._rbuf[:size])
+        del self._rbuf[:size]
+        if sink is not None:
+            sink += data
+        return data
 
-    def _read_frame(self, timeout=None):
+    def _read_frame(self, deadline=None, sink=None):
         """读一个完整帧，返回 (fin, opcode, payload)。"""
-        header = self._read_exact(2, timeout)
+        header = self._read_exact(2, deadline, sink)
         b1, b2 = header[0], header[1]
         fin = bool(b1 & 0x80)
         opcode = b1 & 0x0F
         masked = bool(b2 & 0x80)
         length = b2 & 0x7F
         if length == 126:
-            length = struct.unpack("!H", self._read_exact(2))[0]
+            length = struct.unpack("!H", self._read_exact(2, deadline, sink))[0]
         elif length == 127:
-            length = struct.unpack("!Q", self._read_exact(8))[0]
+            length = struct.unpack("!Q", self._read_exact(8, deadline, sink))[0]
         if length > MAX_PAYLOAD:
             raise WSError("frame too large: %d" % length)
-        mask = self._read_exact(4) if masked else None
-        payload = self._read_exact(length) if length else b""
+        mask = self._read_exact(4, deadline, sink) if masked else None
+        payload = self._read_exact(length, deadline, sink) if length else b""
         if mask:
             payload = _unmask(payload, mask)
         return fin, opcode, payload
@@ -97,11 +143,22 @@ class WSConnection(object):
         """读取一条完整文本消息（自动重组分片，处理 ping/close）。
 
         返回 str；对端正常关闭返回 None；超时抛 socket.timeout。
+        超时的计时覆盖整条消息，中途收到 ping 不会把等待时间续上。
+
+        超时是可重入的：本次已解析出的字节会塞回缓冲区头部，调用方下次
+        重试时从帧边界重新解析，不会把半个帧当成新消息的开头。
         """
+        deadline = None if timeout is None else time.time() + max(0.0, timeout)
         buffer = b""
         first_opcode = None
+        taken = bytearray()          # 本次调用已从流里取走的字节
         while True:
-            fin, opcode, payload = self._read_frame(timeout)
+            try:
+                fin, opcode, payload = self._read_frame(deadline, taken)
+            except socket.timeout:
+                if taken:
+                    self._rbuf[0:0] = taken
+                raise
             if opcode == OP_PING:
                 self.send_frame(OP_PONG, payload)
                 continue
