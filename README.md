@@ -39,7 +39,7 @@ python main.py status
 ### 3. 验证
 
 ```bash
-python main.py serve        # 前台启动服务（可选，其它命令会自动拉起）
+python main.py up           # 确保服务在跑并等插件连上（预热，可选）
 python main.py doctor       # 环境自检，daemon / browser 都应为 ✔
 python main.py tab list
 ```
@@ -59,6 +59,20 @@ python main.py shot out/page.png
 
 `python main.py help` 看命令总览，`python main.py help click` 看单命令详细说明，
 `python main.py help --guide` 看完整使用文档。
+
+## 连接保持
+
+插件到本地服务是一条 WebSocket。会断的只有两种情况：服务进程退出、浏览器回收插件的后台线程。
+两者都已经处理，正常使用感知不到卡顿：
+
+- **双向保活 15 秒**：服务端发 ping、插件回 pong。Chrome 116+ 规定 WebSocket 收发消息会重置后台
+  线程的 30 秒空闲计时，心跳不断就不会被回收。
+- **快速重连**：断线后 250ms 起重试、最多 800ms 一次，持续 15 秒；服务一恢复立刻连上，
+  之后才退到 1–5 秒。
+- **命令侧宽限**：命令落在断线空窗里不会立刻报错，会最多等 `command.connect_wait`（默认 3.5 秒）
+  把重连接住。
+- **事件补连**：切标签、切窗口、增删标签页都会顺便补连一次。
+- `python main.py up` 可显式预热，`python main.py status` 能看到重连次数与上次断开时间。
 
 ## 选择器
 
@@ -99,14 +113,18 @@ $ python main.py dom text "css=h1" --json
 ```json
 {
     "language": "zh-CN",
-    "server": { "host": "127.0.0.1", "port": 8765, "token": "", "auto_start": true },
-    "command": { "timeout": 30, "retry": 1 },
+    "server": { "host": "127.0.0.1", "port": 8765, "token": "", "auto_start": true,
+                "keepalive_seconds": 15, "silence_seconds": 0 },
+    "command": { "timeout": 30, "retry": 1, "connect_wait": 3.5 },
     "tab": { "status_title": true, "title_flash_ms": 600 },
     "security": { "allow_js": true, "allow_nav": true }
 }
 ```
 
 - `server.token`：非空时，RPC 与 WebSocket 都必须带同一 token（插件设置页填）。防止本机其它程序驱动你的浏览器。
+- `server.keepalive_seconds`：服务端保活间隔，必须小于 30 秒才能阻止浏览器回收插件后台线程。
+- `server.silence_seconds`：多久收不到插件的任何字节就判定连接僵死并断开，0 = 自动（保活间隔的 4 倍且不低于 30 秒）。别设太小，否则被浏览器节流的插件会被误杀。
+- `command.connect_wait`：命令等待插件重连的宽限期，设 0 可让命令在插件离线时立刻失败。
 - `security.allow_js/allow_nav`：设为 false 可直接禁用脚本注入/导航，适合把工具交给不可信调用方时使用。
 
 ## 项目结构
@@ -144,16 +162,22 @@ tests/                  端到端测试（含模拟浏览器）
 ## 测试
 
 ```bash
-# 1) 端到端：真实服务 + 真实 CLI 子进程 + 模拟浏览器，覆盖 20 项行为
+# 1) 端到端：真实服务 + 真实 CLI 子进程 + 模拟浏览器，覆盖 25 项行为
 #    （路由、索引解析、超时、错误码、标题文案、长轮询通道）
 python tests/test_e2e.py
 
 # 2) 页面引擎：用 jsdom 造真实 DOM，跑一遍全部读取与交互动作（29 项）
 npm i jsdom            # 仅测试用
 node tests/engine_smoke.js
+
+# 3) WebSocket 读取层：读超时可重入、半包/粘包、ping 插队、对端断开（9 项）
+python tests/test_ws_read.py
+
+# 4) 保活与判死：空闲不误杀、僵死连接被回收（10 项，约 30 秒）
+python tests/test_keepalive.py
 ```
 
-两套测试都不需要真实浏览器，改完代码直接跑即可回归。
+四套测试都不需要真实浏览器，改完代码直接跑即可回归。
 
 ## 已知限制
 

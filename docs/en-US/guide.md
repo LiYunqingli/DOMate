@@ -22,6 +22,26 @@ auto-starts it in the background (detached; closing the terminal does not kill i
 Browser: open chrome://extensions, enable Developer mode, "Load unpacked", pick the `extension` folder.
 The badge shows ON when connected.
 
+### About reconnects
+
+The extension talks to the local service over a WebSocket. It can only drop for two reasons: the
+service process exited, or the browser reclaimed the extension's service worker. Both are handled,
+so you should not notice them:
+
+| Mechanism | What it does |
+| --- | --- |
+| Two-way keepalive (15s) | The service pings, the extension answers. Since Chrome 116, WebSocket traffic resets the service worker's 30-second idle timer, so the worker is never reclaimed while the heartbeat runs |
+| Fast reconnect | Retries from 250ms, at most every 800ms, for 15 seconds — the socket reattaches as soon as the port reopens. Only after that does it back off to 1–5s |
+| Command-side grace | A command that lands in the gap waits up to `command.connect_wait` (3.5s) instead of failing immediately. Normally never triggered |
+| Event-driven reconnect | Switching tabs or windows, creating/closing tabs also triggers a reconnect attempt |
+
+```
+python main.py up            # ensure the service is up and wait for the extension
+python main.py up --force    # restart the service first (after config changes)
+```
+
+`up` prints the elapsed time and returns almost instantly when everything is already connected.
+
 ## 3. Core concepts
 
 ### Selected tab
