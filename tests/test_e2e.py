@@ -88,9 +88,44 @@ def main():
           payload.get("error", {}).get("code") in ("E_NO_BROWSER", "E_DAEMON_DOWN"),
           "%s %s %s" % (code, payload, err))
 
-    browser = MockBrowser("ws://127.0.0.1:%d/ws" % PORT)
-    browser.start()
+    # 宽限期不能变成「明明没插件还干等」：直接测 RPC，避开 CLI 进程启动开销
+    config.set("command.connect_wait", 0.2)
+    began = time.time()
+    body = json.dumps({"action": "dom.text", "params": {}, "tab": 101}).encode()
+    req = urllib.request.Request("http://127.0.0.1:%d/rpc" % PORT, data=body,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        offline = json.loads(resp.read().decode())
+    spent = time.time() - began
+    check("离线时不空等", offline.get("error", {}).get("code") == "E_NO_BROWSER" and spent < 1.2,
+          "%.2fs %s" % (spent, offline))
+
+    # ---------------------------------------------------------------- 断线空窗
+    # 服务正常、插件恰好断开：命令应该等插件重连后继续，而不是直接报错。
+    # 用原始 RPC 计时，避免 CLI 进程启动开销干扰（沙箱里 import 可能要好几秒）。
+    config.set("command.connect_wait", 3.0)
+    holder = {}
+
+    def _reconnect():
+        holder["browser"] = MockBrowser("ws://127.0.0.1:%d/ws" % PORT)
+        holder["browser"].start()
+
+    threading.Timer(1.0, _reconnect).start()
+    began = time.time()
+    body = json.dumps({"action": "dom.text", "params": {}, "tab": 101}).encode()
+    req = urllib.request.Request("http://127.0.0.1:%d/rpc" % PORT, data=body,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        gapped = json.loads(resp.read().decode())
+    spent = time.time() - began
+    check("断线空窗内命令等待重连后成功",
+          gapped.get("ok") and (gapped.get("data") or {}).get("text") == "示例标题", gapped)
+    check("等待时长覆盖插件重连时间", 0.7 <= spent <= 3.0, "%.2fs" % spent)
+
+    browser = holder.get("browser")
     check("重连成功", wait_for(lambda: len(server.hub.tabs()) == 2, 5))
+    check("重连次数被记录", server.hub.reconnects >= 1, server.hub.reconnects)
+    config.set("command.connect_wait", 3.5)
 
     # ---------------------------------------------------------------- 标签页
     code, payload, _ = cli_json("tab", "list")
@@ -138,6 +173,9 @@ def main():
 
     code, out, err = cli("doctor")
     check("doctor 可运行", code in (0, 2), out + err)
+
+    code, payload, _ = cli_json("up", "--wait", "2")
+    check("up 报告浏览器已就绪", code == 0 and (payload or {}).get("data", {}).get("ready"), payload)
 
     # ---------------------------------------------------------------- 超时
     body = json.dumps({"action": "slow.action", "params": {}, "tab": 101, "timeout": 1}).encode()
