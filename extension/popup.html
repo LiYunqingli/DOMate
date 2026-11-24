@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>DOMate 状态</title>
+    <style>
+        :root { color-scheme: dark light; }
+        body {
+            width: 280px; margin: 0; padding: 14px 16px;
+            font: 13px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: #1b1d21; color: #e6e6e6;
+        }
+        h1 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #c0392b; }
+        .dot.on { background: #2e9e5b; box-shadow: 0 0 6px #2e9e5b; }
+        .row { display: flex; justify-content: space-between; padding: 3px 0; }
+        .k { color: #8b949e; }
+        .v { font-family: Consolas, monospace; font-size: 12px; }
+        button {
+            width: 100%; margin-top: 12px; padding: 7px; cursor: pointer;
+            background: #2d6cdf; color: #fff; border: 0; border-radius: 5px;
+            font-size: 12px;
+        }
+        button.ghost { background: #2a2d33; color: #cfd3d8; margin-top: 6px; }
+        .hint { color: #8b949e; font-size: 11px; margin-top: 8px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <h1><span class="dot" id="dot"></span> DOMate Bridge</h1>
+    <div class="row"><span class="k">本地服务</span><span class="v" id="server">-</span></div>
+    <div class="row"><span class="k">连接状态</span><span class="v" id="state">检测中…</span></div>
+    <div class="row"><span class="k">客户端 ID</span><span class="v" id="cid">-</span></div>
+    <div class="row"><span class="k">版本</span><span class="v" id="ver">-</span></div>
+    <div class="hint" id="hint"></div>
+    <button id="reconnect">重新连接</button>
+    <button id="options" class="ghost">连接设置</button>
+    <script src="popup.js"></script>
+</body>
+</html>

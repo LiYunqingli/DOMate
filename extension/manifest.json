@@ -1,0 +1,45 @@
+{
+    "manifest_version": 3,
+    "name": "DOMate Bridge",
+    "version": "1.0.0",
+    "description": "把浏览器交给终端：DOMate 的本地桥接插件，接收终端命令并执行 DOM 读取、点击、输入、脚本注入。",
+    "minimum_chrome_version": "116",
+    "permissions": [
+        "tabs",
+        "scripting",
+        "storage",
+        "alarms",
+        "activeTab"
+    ],
+    "host_permissions": [
+        "<all_urls>",
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["pagehook.js"],
+            "run_at": "document_start",
+            "world": "MAIN",
+            "all_frames": false
+        },
+        {
+            "matches": ["<all_urls>"],
+            "js": ["engine.js", "content.js"],
+            "run_at": "document_start",
+            "all_frames": false
+        }
+    ],
+    "action": {
+        "default_title": "DOMate",
+        "default_popup": "popup.html"
+    },
+    "options_ui": {
+        "page": "options.html",
+        "open_in_tab": true
+    }
+}

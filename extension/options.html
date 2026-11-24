@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>DOMate 连接设置</title>
+    <style>
+        :root { color-scheme: dark light; }
+        body {
+            margin: 0; padding: 40px 20px; background: #16181c; color: #e6e6e6;
+            font: 14px/1.7 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+        .card {
+            max-width: 520px; margin: 0 auto; background: #1f2228;
+            border: 1px solid #2c3037; border-radius: 10px; padding: 26px 28px;
+        }
+        h1 { font-size: 17px; margin: 0 0 4px; }
+        p.sub { color: #8b949e; margin: 0 0 22px; font-size: 12px; }
+        label { display: block; margin: 14px 0 6px; font-size: 12px; color: #9aa4b2; }
+        input {
+            width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px;
+            border: 1px solid #333944; background: #14161a; color: #e6e6e6;
+            font: 13px Consolas, monospace;
+        }
+        .grid { display: flex; gap: 12px; }
+        .grid > div { flex: 1; }
+        .actions { display: flex; gap: 10px; margin-top: 22px; align-items: center; }
+        button {
+            padding: 8px 16px; border: 0; border-radius: 6px; cursor: pointer;
+            background: #2d6cdf; color: #fff; font-size: 13px;
+        }
+        button.ghost { background: #2a2d33; color: #cfd3d8; }
+        #msg { font-size: 12px; color: #2e9e5b; }
+        #msg.err { color: #e05c4b; }
+        .note { margin-top: 20px; font-size: 11px; color: #6f7885; line-height: 1.7; }
+        code { background: #14161a; padding: 1px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>DOMate 连接设置</h1>
+        <p class="sub">插件通过本地 WebSocket 与终端工具通讯，默认 127.0.0.1:8765。</p>
+
+        <div class="grid">
+            <div>
+                <label>主机</label>
+                <input id="host" placeholder="127.0.0.1">
+            </div>
+            <div>
+                <label>端口</label>
+                <input id="port" placeholder="8765">
+            </div>
+        </div>
+
+        <label>访问令牌（可选，需与 config.json 的 server.token 一致）</label>
+        <input id="token" placeholder="留空表示不校验">
+
+        <div class="actions">
+            <button id="save">保存并重连</button>
+            <button id="reset" class="ghost">恢复默认</button>
+            <span id="msg"></span>
+        </div>
+
+        <div class="note">
+            提示：修改端口后需要同步修改 <code>config.json</code> 的 <code>server.port</code>，
+            或执行 <code>python main.py serve --port 8790</code>。<br>
+            如果页面提示「无法在该页面注入脚本」，说明当前是 <code>chrome://</code> 等受限页面，属于正常限制。
+        </div>
+    </div>
+    <script src="options.js"></script>
+</body>
+</html>
