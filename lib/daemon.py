@@ -81,7 +81,18 @@ class _Logger(object):
 
 class DomateServer(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    # Windows 的 SO_REUSEADDR 语义和 POSIX 完全不同：它允许别的进程再绑同一个
+    # 端口，两个 daemon 抢端口会让插件连接在两者之间来回掉。所以 Windows 上
+    # 关掉它，改用 SO_EXCLUSIVEADDRUSE 独占（见 server_bind）。
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        if os.name == "nt":
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            except (AttributeError, OSError):
+                pass
+        ThreadingHTTPServer.server_bind(self)
 
     def __init__(self, addr, handler, hub, logger, token=""):
         ThreadingHTTPServer.__init__(self, addr, handler)
