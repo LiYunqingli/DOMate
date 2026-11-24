@@ -87,7 +87,8 @@
         "target": "Target",
         "size": "Window",
         "path": "Path",
-        "hint": "Hint"
+        "hint": "Hint",
+        "reconnects": "Reconnects"
     },
     "flag": {
         "active": "active",
@@ -175,7 +176,11 @@
             "Open chrome://extensions in Chrome/Edge and enable Developer mode",
             "Click Load unpacked and pick the extension folder of this project",
             "Click the badge and confirm it shows connected (start the service first: domate serve)"
-        ]
+        ],
+        "browser_dropped_at": "Last disconnect: {time}",
+        "up_ready": "Ready: browser connected in {elapsed}s ({browser}, {tabs} tabs)",
+        "up_timeout": "Server is up but no browser extension connected within {timeout}s",
+        "waiting_browser": "Waiting for the browser extension to reconnect (up to {timeout}s)…"
     },
     "help": {
         "title": "{name} {version} · drive the browser from your terminal",
@@ -766,6 +771,24 @@
             "examples": [
                 "events",
                 "events --limit 20"
+            ]
+        },
+        "up": {
+            "brief": "Warm up: ensure server and wait for the extension",
+            "desc": "Start the local server if needed and wait until the browser extension attaches, so subsequent commands skip the handshake. Run it once at the top of a script or before a batch of commands.",
+            "opt": {
+                "wait": "Maximum seconds to wait (default 10)",
+                "force": "Restart the local server first (use after config changes)"
+            },
+            "examples": [
+                "up",
+                "up --wait 20",
+                "up --force"
+            ],
+            "related": [
+                "serve",
+                "status",
+                "doctor"
             ]
         }
     }

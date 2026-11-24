@@ -6,6 +6,7 @@ import os
 import platform
 import socket
 import sys
+import time
 
 from .. import helpdoc
 from ..config import coerce
@@ -22,6 +23,40 @@ def cmd_serve(ctx):
         ctx.config.set("server.port", int(port))
     foreground = not ctx.opt("daemon", False)
     return daemon.run(ctx.config, ctx.i18n, ctx.state, foreground=foreground)
+
+
+def cmd_up(ctx):
+    """确保服务在跑，并等浏览器插件连上（预热，消除首条命令的握手等待）。"""
+    started = time.time()
+    if ctx.opt("force"):
+        ctx.rpc.stop()
+        time.sleep(0.2)
+    status = ctx.rpc.ensure()                      # 没启动就在这里拉起
+    budget = ctx.opt("wait")
+    budget = 10.0 if budget is None else max(0.0, float(budget))
+
+    browser = status.get("browser") or {}
+    deadline = time.time() + budget
+    while not browser.get("connected") and time.time() < deadline:
+        time.sleep(0.15)
+        latest = ctx.rpc.health()
+        if latest:
+            status, browser = latest, latest.get("browser") or {}
+    elapsed = round(time.time() - started, 2)
+    ready = bool(browser.get("connected"))
+
+    if ctx.emit({"ready": ready, "elapsed": elapsed,
+                 "server": status.get("server"), "browser": browser}):
+        return 0 if ready else 2
+
+    if ready:
+        ctx.out.ok(ctx.text("msg.up_ready", elapsed=elapsed,
+                            browser=browser.get("browser") or "-",
+                            tabs=len(status.get("tabs") or [])))
+        return 0
+    ctx.out.warn(ctx.text("msg.up_timeout", timeout=budget))
+    ctx.out.write(ctx.out.paint(ctx.text("err.hint.browser"), "gray"))
+    return 2
 
 
 def cmd_stop(ctx):
@@ -70,14 +105,22 @@ def _render_status(ctx, health):
         (t("field.version"), server.get("version", "")),
     ])
     if browser.get("connected"):
-        ctx.out.kv([
+        rows = [
             (t("field.browser"), "%s %s" % (browser.get("browser") or "-", browser.get("version") or "")),
             (t("field.conn"), browser.get("kind") or "-"),
             (t("field.tabs"), str(len(tabs))),
             (t("field.selected"), str(health.get("selected") or "-")),
-        ])
+        ]
+        if browser.get("reconnects"):
+            rows.append((t("field.reconnects"), str(browser.get("reconnects"))))
+        ctx.out.kv(rows)
     else:
         ctx.out.warn(t("msg.browser_offline"))
+        last = browser.get("lastDisconnect") or {}
+        if last.get("at"):
+            ctx.out.write(ctx.out.paint(t("msg.browser_dropped_at",
+                                           time=time.strftime("%H:%M:%S", time.localtime(last["at"]))),
+                                        "gray"))
     return 0
 
 
@@ -249,6 +292,10 @@ def register(subparsers, common):
     p = add("serve", cmd_serve, "cmd.serve.brief")
     p.add_argument("--foreground", action="store_true", help=i18n.t("cmd.serve.opt.foreground"))
     p.add_argument("--daemon", action="store_true", help=i18n.t("cmd.serve.opt.daemon"))
+
+    p = add("up", cmd_up, "cmd.up.brief")
+    p.add_argument("--wait", type=float, default=None, help=i18n.t("cmd.up.opt.wait"))
+    p.add_argument("--force", action="store_true", help=i18n.t("cmd.up.opt.force"))
 
     add("stop", cmd_stop, "cmd.stop.brief")
     add("status", cmd_status, "cmd.status.brief")

@@ -87,7 +87,8 @@
         "target": "目标",
         "size": "窗口",
         "path": "路径",
-        "hint": "提示"
+        "hint": "提示",
+        "reconnects": "重连次数"
     },
     "flag": {
         "active": "活动",
@@ -175,7 +176,11 @@
             "点插件图标确认显示「已连接」（服务需先启动：domate serve）"
         ],
         "browser_short": "未连接",
-        "browser_connected": "已连接"
+        "browser_connected": "已连接",
+        "browser_dropped_at": "上次断开时间：{time}",
+        "up_ready": "服务已就绪，浏览器已连接（耗时 {elapsed}s，{browser}，{tabs} 个标签页）",
+        "up_timeout": "服务已启动，但 {timeout} 秒内没有等到浏览器插件连接",
+        "waiting_browser": "正在等浏览器插件重连，最多 {timeout} 秒…"
     },
     "help": {
         "title": "{name} {version} · 终端控制浏览器",
@@ -766,6 +771,24 @@
             "examples": [
                 "events",
                 "events --limit 20"
+            ]
+        },
+        "up": {
+            "brief": "预热：确保服务就绪并等插件连上",
+            "desc": "把本地服务拉起来并等到浏览器插件连上，之后执行的命令就不用再等握手。适合放在脚本开头或批量操作前执行一次。",
+            "opt": {
+                "wait": "最多等待多少秒（默认 10）",
+                "force": "先重启本地服务再等待（改过配置后用）"
+            },
+            "examples": [
+                "up",
+                "up --wait 20",
+                "up --force"
+            ],
+            "related": [
+                "serve",
+                "status",
+                "doctor"
             ]
         }
     }

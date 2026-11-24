@@ -142,6 +142,14 @@ class Console(object):
                 err.write("  %s\n" % hint)
         err.flush()
 
+    def note(self, text):
+        """过程提示：走 stderr，不干扰 --json 的管道输出。"""
+        if self.json_mode:
+            return
+        err = sys.stderr
+        err.write(self.paint("… " + text, "dim") + "\n")
+        err.flush()
+
     def json_out(self, obj):
         """结构化输出，供 AI/脚本解析。"""
         self.write(json.dumps(obj, ensure_ascii=False, indent=2))

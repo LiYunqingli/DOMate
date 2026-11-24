@@ -14,7 +14,7 @@ from .config import ROOT
 #: 帮助总览里的分组（顺序即显示顺序）
 GROUPS = [
     ("help.group.start", [
-        "status", "serve", "stop", "doctor", "config", "version", "help",
+        "up", "status", "serve", "stop", "doctor", "config", "version", "help",
     ]),
     ("help.group.tab", [
         "tab list", "tab use", "tab current", "tab new", "tab close",

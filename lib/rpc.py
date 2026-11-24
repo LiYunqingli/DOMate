@@ -21,10 +21,12 @@ _IS_WIN = os.name == "nt"
 
 
 class Rpc(object):
-    def __init__(self, config, i18n):
+    def __init__(self, config, i18n, notify=None):
         self.config = config
         self.i18n = i18n
         self.base = config.base_url
+        #: 过程提示回调（往 stderr 写一行），用于「正在等插件重连」这类说明
+        self.notify = notify
 
     # ------------------------------------------------------------------ 基础
     def _headers(self):
@@ -116,7 +118,13 @@ class Rpc(object):
     # ------------------------------------------------------------------ 调用
     def call(self, action, params=None, tab=None, timeout=None, retry=None):
         """下发一条命令，返回浏览器端 data。"""
-        self.ensure()
+        status = self.ensure()
+        # 插件不在线时，服务端会等一个重连宽限期。这里先说明一句，
+        # 免得用户盯着没有输出的终端以为卡死了。
+        if self.notify is not None and not ((status or {}).get("browser") or {}).get("connected"):
+            budget = self.config.get("command.connect_wait", 3.5)
+            if float(budget or 0) > 0:
+                self.notify(self.i18n.t("msg.waiting_browser", timeout=budget))
         payload = {
             "action": action,
             "params": params or {},

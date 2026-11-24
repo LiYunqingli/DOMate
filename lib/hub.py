@@ -22,6 +22,11 @@ TAB_GLOBAL_ACTIONS = ("tab.list", "tab.new", "tab.current")
 #: 所以一律不自动重试，除非调用方显式指定 retry。
 READ_ONLY_PREFIXES = ("dom.", "log.", "page.info", "tab.list", "tab.current", "capture.")
 
+#: 浏览器断线重连的默认宽限期（秒）。
+#: 服务重启后插件要重新握手，命令如果恰好在空窗里到达，直接报错体验很差，
+#: 所以先等一会儿；一旦连上立即返回，正常情况不产生任何等待。
+DEFAULT_CONNECT_WAIT = 3.5
+
 
 def is_readonly(action):
     return action.startswith(READ_ONLY_PREFIXES)
@@ -100,6 +105,11 @@ class Hub(object):
         self.pending = {}
         self._tabs = {}
         self._lock = threading.RLock()
+        # 以下三个字段只用于诊断「为什么刚才卡了一下」：重连计数、最后一次断开时间
+        self.created = time.time()
+        self.ever_connected = False
+        self.reconnects = 0
+        self.last_disconnect = None
 
     # ------------------------------------------------------------------ 客户端
     def add_client(self, kind, meta, ws=None, cid=None):
@@ -114,6 +124,9 @@ class Hub(object):
                         old.ws.close()
                     except Exception:
                         pass
+            if self.ever_connected or old is not None:
+                self.reconnects += 1
+            self.ever_connected = True
             self.clients[cid] = client
         return client
 
@@ -123,6 +136,7 @@ class Hub(object):
             if client:
                 client.closed = True
                 self._drop_tabs_of(cid)
+                self.last_disconnect = {"cid": cid, "at": int(time.time())}
         return client
 
     def get_client(self, cid):
@@ -269,6 +283,42 @@ class Hub(object):
         raise DomateError("E_NO_TAB", message="no tab matches: %s" % text)
 
     # ------------------------------------------------------------------ 命令
+    def connect_budget(self, timeout=None):
+        """这次命令最多愿意等浏览器多久（秒）。"""
+        if timeout is not None:
+            return max(0.0, float(timeout))
+        try:
+            return max(0.0, float(self.config.get("command.connect_wait", DEFAULT_CONNECT_WAIT)))
+        except (TypeError, ValueError):
+            return DEFAULT_CONNECT_WAIT
+
+    def wait_for_client(self, timeout=None):
+        """等待任意浏览器端连上来，返回 Client 或 None。
+
+        存在的意义：插件断线到重连之间通常只有几百毫秒，但命令恰好落在这个
+        空窗里就会直接失败。这里用「轮询 + 立即返回」把它抹平，正常情况
+        一次都不会触发等待。
+        """
+        client = self.primary_client()
+        if client is not None:
+            return client
+
+        budget = self.connect_budget(timeout)
+        # 从没见过浏览器：可能是插件根本没装，别让用户干等。
+        # 刚启动的几秒内给一点余量（插件可能正在首次握手），之后直接快速失败。
+        if not self.ever_connected:
+            budget = min(budget, 1.5 if (time.time() - self.created) < 20 else 0.3)
+        if budget <= 0:
+            return None
+
+        deadline = time.time() + budget
+        while time.time() < deadline:
+            time.sleep(0.05)
+            client = self.primary_client()
+            if client is not None:
+                return client
+        return None
+
     def labels(self):
         """下发给浏览器端的标题状态文案（标题栏多语言）。"""
         i18n = self.i18n
@@ -282,7 +332,7 @@ class Hub(object):
 
     def route(self, action, tab):
         """决定命令发给谁、作用于哪个标签页。"""
-        client = self.primary_client()
+        client = self.wait_for_client()
         if client is None:
             raise DomateError("E_NO_BROWSER", hint="browser")
 
@@ -390,6 +440,9 @@ class Hub(object):
                 "version": client.meta.get("version") if client else None,
                 "browser": client.meta.get("browser") if client else None,
                 "lastSeen": int(client.last_seen) if client else None,
+                "reconnects": self.reconnects,
+                "lastDisconnect": self.last_disconnect,
+                "connectWait": self.connect_budget(),
             },
             "clients": self.client_list(),
             "tabs": self.tabs(),

@@ -24,13 +24,22 @@ DEFAULTS = {
         "auto_start": True,
         "poll_timeout": 25,
         "idle_exit_minutes": 0,
+        # 保活间隔（秒）：服务端每隔这么久给插件发一次 ping。
+        # 小于 30 秒即可让插件的 Service Worker 不被浏览器回收。
+        "keepalive_seconds": 15,
+        # 多久收不到插件的任何字节就判定连接已死（秒）。0 = 自动
+        # （保活间隔的 4 倍，且不低于 30 秒）。设太小会误杀被节流的插件。
+        "silence_seconds": 0,
         "log_level": "info",
         "log_file": "logs/domate.log"
     },
     "command": {
         "timeout": 30,
         "retry": 1,
-        "default_wait": 8
+        "default_wait": 8,
+        # 浏览器重连宽限期（秒）：命令到达时插件恰好断开，先等这么久再报错。
+        # 服务正常时不会产生任何等待。
+        "connect_wait": 3.5
     },
     "tab": {
         "status_title": True,

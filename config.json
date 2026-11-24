@@ -7,13 +7,16 @@
         "auto_start": true,
         "poll_timeout": 25,
         "idle_exit_minutes": 0,
+        "keepalive_seconds": 15,
+        "silence_seconds": 0,
         "log_level": "info",
         "log_file": "logs/domate.log"
     },
     "command": {
         "timeout": 30,
         "retry": 1,
-        "default_wait": 8
+        "default_wait": 8,
+        "connect_wait": 3.5
     },
     "tab": {
         "status_title": true,

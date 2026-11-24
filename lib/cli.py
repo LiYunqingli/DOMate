@@ -147,7 +147,7 @@ def main(argv=None):
     out = Console(color, bool(getattr(args, "json", False)), config.get("output.max_text", 4000))
 
     state = State()
-    ctx = Ctx(config, i18n, out, args, Rpc(config, i18n), state)
+    ctx = Ctx(config, i18n, out, args, Rpc(config, i18n, notify=out.note), state)
     ctx.parsers = common["parsers"]
 
     try:
