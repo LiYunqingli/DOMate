@@ -22,6 +22,30 @@ python main.py doctor
 看到 daemon 与 browser 都是 ✔ 就绪。第一次跑命令时如果服务没起，工具会自动在后台拉起
 （进程脱离终端，关掉命令行也不会断），日志在 logs/domate.log。
 
+想让它真正「一直在后台」，装成系统级自启服务：
+
+```
+python main.py service install     # 注册 + 立即启动
+python main.py service status
+```
+
+之后登录就自动起来，命令只管连。先看它要做什么：`python main.py service install --dry-run`。
+
+### 连接的真相
+
+命令是「一条一个进程」，但**不是**「一条一次连接」：
+
+```
+命令进程 ──HTTP(短连接)──▶ 常驻服务 ──WebSocket(长连接)──▶ 插件
+```
+
+- 命令进程只做两件事：把动作发出去、把结果打出来，然后退出；
+- 常驻服务是**独立进程**，命令退出它还在，插件和它之间的 WebSocket 一直挂着；
+- 所以第二个命令不需要重新握手，除非服务本身退出过（被关掉、机器重启、装服务前忘了起）。
+
+如果观察到「每条命令都在连」，先看 `python main.py status`：`服务` 那行的 pid 变了就是服务在反复重启，
+再看 `logs/domate.log` 里有没有端口冲突或异常退出。
+
 浏览器侧：chrome://extensions → 开发者模式 → 加载已解压的扩展程序 → 选 extension 目录。
 插件图标显示 ON 表示已连上本地服务。
 
@@ -174,6 +198,12 @@ python main.py shot debug.png        # 截图确认
 
 ```
 up / serve / stop / status / doctor / config / version / help
+```
+
+后台服务（开机自启、启停、状态）
+
+```
+service install / service uninstall / service status / service start / service stop / service restart
 ```
 
 标签页

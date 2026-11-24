@@ -44,6 +44,36 @@ python main.py doctor       # 环境自检，daemon / browser 都应为 ✔
 python main.py tab list
 ```
 
+### 4. 装成常驻后台服务（推荐）
+
+服务本身就是一个常驻进程，和浏览器插件之间是一条长连接。不装也能用——命令发现服务没起会顺手拉起一个脱离终端
+的进程；但「顺手拉起」有个前提：得有人执行命令。装成系统级自启后，登录就起来了，谁都不用管。
+
+```bash
+python main.py service install      # 注册 + 立即启动
+python main.py service status       # 注册状态 / 是否在跑 / 插件是否连上
+python main.py service stop         # 停掉
+python main.py service uninstall    # 取消自启并移除配置
+```
+
+各平台落点：
+
+| 平台 | 机制 | 位置 |
+| --- | --- | --- |
+| Windows | 「启动」文件夹里的 VBS（静默调用 `pythonw`，无控制台窗口） | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\DOMate.vbs` |
+| Linux | systemd 用户服务，`Restart=always` | `~/.config/systemd/user/domate.service` |
+| macOS | launchd 用户代理，`KeepAlive` | `~/Library/LaunchAgents/com.domate.bridge.plist` |
+
+`service install --dry-run` 只打印将要做什么，不动系统。Linux 上如果希望退出登录后服务也活着，
+再执行一次 `loginctl enable-linger $USER`。
+
+装好之后，日常只剩命令本身：
+
+```bash
+python main.py tab list
+python main.py click 3
+```
+
 ## 快速上手
 
 ```bash
@@ -175,9 +205,12 @@ python tests/test_ws_read.py
 
 # 4) 保活与判死：空闲不误杀、僵死连接被回收（10 项，约 30 秒）
 python tests/test_keepalive.py
+
+# 5) 后台服务：三平台注册方案、单实例约束、演练不落盘（31 项）
+python tests/test_service.py
 ```
 
-四套测试都不需要真实浏览器，改完代码直接跑即可回归。
+五套测试都不需要真实浏览器，改完代码直接跑即可回归。
 
 ## 已知限制
 

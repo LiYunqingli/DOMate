@@ -125,6 +125,7 @@ python main.py shot debug.png
 
 ```
 service   serve / stop / status / doctor / config / version / help
+autostart service install|uninstall|status|start|stop|restart
 tabs      tab list|use|current|new|close|activate|title|reload|stop
 read      dom tree|outline|html|text|find|attr|count|info|wait
 interact  click type key hover scroll select check uncheck focus fill
