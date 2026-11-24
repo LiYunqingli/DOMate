@@ -15,7 +15,8 @@ import os
 import sys
 
 from . import helpdoc
-from .commands import act_cmd, dom_cmd, page_cmd, script_cmd, sys_cmd, tab_cmd
+from .commands import (act_cmd, dom_cmd, page_cmd, script_cmd, service_cmd,
+                       sys_cmd, tab_cmd)
 from .config import Config
 from .context import Ctx
 from .errors import DomateError
@@ -94,7 +95,7 @@ def build_parser(i18n):
     )
     subparsers = parser.add_subparsers(dest="command", metavar="<命令>")
 
-    for module in (tab_cmd, dom_cmd, act_cmd, script_cmd, page_cmd):
+    for module in (tab_cmd, dom_cmd, act_cmd, script_cmd, page_cmd, service_cmd):
         module.register(subparsers, common)
     sys_cmd.register(subparsers, common)
 

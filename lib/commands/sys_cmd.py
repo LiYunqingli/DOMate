@@ -21,6 +21,16 @@ def cmd_serve(ctx):
     port = ctx.opt("port", None)
     if port:
         ctx.config.set("server.port", int(port))
+    # 幂等：端口上已经有 DOMate 在跑就不要再起一个。
+    # Windows 上允许重复绑定同一端口，两个 daemon 会抢连接，
+    # 插件表现就是反复掉线、时好时坏。
+    running = ctx.rpc.health()
+    if running:
+        server = running.get("server") or {}
+        if ctx.emit({"already": True, "server": server}):
+            return 0
+        ctx.out.warn(ctx.text("msg.serve_already", port=ctx.config.port, pid=server.get("pid")))
+        return 0
     foreground = not ctx.opt("daemon", False)
     return daemon.run(ctx.config, ctx.i18n, ctx.state, foreground=foreground)
 
@@ -74,21 +84,28 @@ def cmd_stop(ctx):
 def cmd_status(ctx):
     health = ctx.rpc.health()
     if not health:
-        data = {"running": False, "browser": {"connected": False}, "tabs": []}
+        from .. import service
+        autostart = service.registered()
+        data = {"running": False, "autostart": autostart,
+                "browser": {"connected": False}, "tabs": []}
         if ctx.json_mode:
             ctx.emit(data)
         else:
-            ctx.out.error(ctx.text("msg.daemon_down"), ctx.text("err.hint.daemon"))
+            hint = ctx.text("msg.autostart_on") if autostart else ctx.text("err.hint.daemon")
+            ctx.out.error(ctx.text("msg.daemon_down"), hint)
         return 2
     return _render_status(ctx, health)
 
 
 def _render_status(ctx, health):
+    from .. import service
     browser = health.get("browser") or {}
     tabs = health.get("tabs") or []
     server = health.get("server") or {}
+    autostart = service.registered()
     data = {
         "running": True,
+        "autostart": autostart,
         "server": server,
         "browser": browser,
         "tabs": len(tabs),
@@ -103,6 +120,7 @@ def _render_status(ctx, health):
         (t("field.server"), "%s:%s  pid=%s" % (ctx.config.host, server.get("port"), server.get("pid"))),
         (t("field.uptime"), _duration(server.get("uptime", 0))),
         (t("field.version"), server.get("version", "")),
+        (t("field.autostart"), t("msg.yes") if autostart else t("msg.no")),
     ])
     if browser.get("connected"):
         rows = [

@@ -16,6 +16,10 @@ GROUPS = [
     ("help.group.start", [
         "up", "status", "serve", "stop", "doctor", "config", "version", "help",
     ]),
+    ("help.group.service", [
+        "service install", "service status", "service start", "service stop",
+        "service restart", "service uninstall",
+    ]),
     ("help.group.tab", [
         "tab list", "tab use", "tab current", "tab new", "tab close",
         "tab activate", "tab title", "tab reload", "tab stop",

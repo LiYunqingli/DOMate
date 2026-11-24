@@ -88,7 +88,12 @@
         "size": "窗口",
         "path": "路径",
         "hint": "提示",
-        "reconnects": "重连次数"
+        "reconnects": "重连次数",
+        "service_kind": "托管方式",
+        "service_registered": "已注册",
+        "service_running": "正在运行",
+        "service_detail": "配置文件",
+        "autostart": "开机自启"
     },
     "flag": {
         "active": "活动",
@@ -180,7 +185,25 @@
         "browser_dropped_at": "上次断开时间：{time}",
         "up_ready": "服务已就绪，浏览器已连接（耗时 {elapsed}s，{browser}，{tabs} 个标签页）",
         "up_timeout": "服务已启动，但 {timeout} 秒内没有等到浏览器插件连接",
-        "waiting_browser": "正在等浏览器插件重连，最多 {timeout} 秒…"
+        "waiting_browser": "正在等浏览器插件重连，最多 {timeout} 秒…",
+        "serve_already": "服务已在运行（端口 {port}，pid={pid}），不再启动第二个",
+        "service_install_title": "注册为后台服务（{kind}）",
+        "service_uninstall_title": "移除后台服务（{kind}）",
+        "service_status_title": "后台服务",
+        "service_installed": "已注册，登录后自动启动。现在就可以直接执行命令，不用再管服务",
+        "service_uninstalled": "已移除后台服务，端口已释放",
+        "service_failed": "操作失败，看上面的输出定位原因",
+        "service_started": "服务已启动",
+        "service_not_installed": "尚未注册为后台服务：执行 domate service install",
+        "service_next_hint": "下一步：python main.py service status 查看，或 python main.py service stop 停掉",
+        "yes": "是",
+        "no": "否",
+        "service_dry_run": "演练结束：以上是将会执行的动作，系统未被修改",
+        "autostart_on": "开机自启：已注册（登录后自动启动；现在启动用 domate service start）",
+        "autostart_off": "开机自启：未注册（domate service install 可注册，之后不用再管服务）",
+        "kind_startup": "登录启动项",
+        "kind_systemd": "systemd 用户服务",
+        "kind_launchd": "launchd 用户代理"
     },
     "help": {
         "title": "{name} {version} · 终端控制浏览器",
@@ -204,7 +227,8 @@
             "dom": "读取页面",
             "act": "交互操作",
             "script": "脚本",
-            "page": "页面与截图"
+            "page": "页面与截图",
+            "service": "后台服务"
         },
         "quick": [
             "domate tab list",
@@ -789,6 +813,83 @@
                 "serve",
                 "status",
                 "doctor"
+            ]
+        },
+        "service": {
+            "brief": "后台服务：注册开机自启、启停与状态",
+            "opt": {
+                "dry_run": "只打印要做的事，不改系统"
+            }
+        },
+        "service_install": {
+            "brief": "注册为开机自启的后台服务",
+            "desc": "把本地服务装成系统级自启项（Windows 计划任务 / Linux systemd --user / macOS launchd），登录即启动、异常退出自动拉起。装完后命令不再需要顺手拉起服务，也就没有冷启动等待。",
+            "opt": {
+                "no_start": "只注册，不立即启动"
+            },
+            "examples": [
+                "service-install",
+                "service-install --dry-run",
+                "service-install --no-start"
+            ],
+            "related": [
+                "service-status",
+                "service-uninstall",
+                "serve"
+            ]
+        },
+        "service_uninstall": {
+            "brief": "取消开机自启并移除服务配置",
+            "desc": "卸载托管配置（进程一并停掉）。不影响代码和配置，随时可以再装回来。",
+            "examples": [
+                "service-uninstall",
+                "service-uninstall --dry-run"
+            ],
+            "related": [
+                "service-install"
+            ]
+        },
+        "service_status": {
+            "brief": "查看后台服务的注册与运行状态",
+            "desc": "检查托管配置是否已注册、端口上是否有服务在跑、插件是否连上。",
+            "examples": [
+                "service-status"
+            ],
+            "related": [
+                "service-install",
+                "status"
+            ]
+        },
+        "service_start": {
+            "brief": "启动后台服务",
+            "desc": "通过托管方启动服务。已经在跑时直接返回，不会重复启动。",
+            "examples": [
+                "service-start"
+            ],
+            "related": [
+                "service-stop",
+                "service-restart"
+            ]
+        },
+        "service_stop": {
+            "brief": "停止后台服务",
+            "desc": "先让服务优雅退出，再由托管方强制停止（防止守护进程把它拉回来）。",
+            "examples": [
+                "service-stop"
+            ],
+            "related": [
+                "service-start"
+            ]
+        },
+        "service_restart": {
+            "brief": "重启后台服务",
+            "desc": "改过 config.json 后用这个让新配置生效。",
+            "examples": [
+                "service-restart"
+            ],
+            "related": [
+                "service-start",
+                "service-stop"
             ]
         }
     }

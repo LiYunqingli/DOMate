@@ -88,7 +88,12 @@
         "size": "Window",
         "path": "Path",
         "hint": "Hint",
-        "reconnects": "Reconnects"
+        "reconnects": "Reconnects",
+        "service_kind": "Managed by",
+        "service_registered": "Registered",
+        "service_running": "Running",
+        "service_detail": "Definition",
+        "autostart": "Autostart"
     },
     "flag": {
         "active": "active",
@@ -180,7 +185,25 @@
         "browser_dropped_at": "Last disconnect: {time}",
         "up_ready": "Ready: browser connected in {elapsed}s ({browser}, {tabs} tabs)",
         "up_timeout": "Server is up but no browser extension connected within {timeout}s",
-        "waiting_browser": "Waiting for the browser extension to reconnect (up to {timeout}s)…"
+        "waiting_browser": "Waiting for the browser extension to reconnect (up to {timeout}s)…",
+        "serve_already": "Server already running on port {port} (pid={pid}); not starting another one",
+        "service_install_title": "Register background service ({kind})",
+        "service_uninstall_title": "Remove background service ({kind})",
+        "service_status_title": "Background service",
+        "service_installed": "Registered; it will start at login. Just run commands from now on",
+        "service_uninstalled": "Service removed and port released",
+        "service_failed": "Failed — see the output above",
+        "service_started": "Service started",
+        "service_not_installed": "Not registered yet: run domate service install",
+        "service_next_hint": "Next: python main.py service status, or python main.py service stop",
+        "yes": "yes",
+        "no": "no",
+        "service_dry_run": "Dry run: the actions above were not executed",
+        "autostart_on": "Autostart: registered (starts at login; use domate service start to start now)",
+        "autostart_off": "Autostart: not registered (run domate service install to stop worrying about the server)",
+        "kind_startup": "login item",
+        "kind_systemd": "systemd user service",
+        "kind_launchd": "launchd user agent"
     },
     "help": {
         "title": "{name} {version} · drive the browser from your terminal",
@@ -204,7 +227,8 @@
             "dom": "Read the page",
             "act": "Interact",
             "script": "Scripts",
-            "page": "Page & capture"
+            "page": "Page & capture",
+            "service": "Background service"
         },
         "quick": [
             "domate tab list",
@@ -789,6 +813,83 @@
                 "serve",
                 "status",
                 "doctor"
+            ]
+        },
+        "service": {
+            "brief": "Background service: auto-start, start/stop, status",
+            "opt": {
+                "dry_run": "Print the actions without touching the system"
+            }
+        },
+        "service_install": {
+            "brief": "Register an auto-start background service",
+            "desc": "Install the local server as a login-time service (Windows scheduled task / Linux systemd --user / macOS launchd), restarted automatically if it dies. After this, commands no longer cold-start a server.",
+            "opt": {
+                "no_start": "Register only, do not start now"
+            },
+            "examples": [
+                "service-install",
+                "service-install --dry-run",
+                "service-install --no-start"
+            ],
+            "related": [
+                "service-status",
+                "service-uninstall",
+                "serve"
+            ]
+        },
+        "service_uninstall": {
+            "brief": "Disable auto-start and remove the service definition",
+            "desc": "Uninstall the managed definition (and stop the process). Code and config are untouched.",
+            "examples": [
+                "service-uninstall",
+                "service-uninstall --dry-run"
+            ],
+            "related": [
+                "service-install"
+            ]
+        },
+        "service_status": {
+            "brief": "Show service registration and runtime state",
+            "desc": "Check whether the definition is registered, whether something is listening on the port, and whether the extension is attached.",
+            "examples": [
+                "service-status"
+            ],
+            "related": [
+                "service-install",
+                "status"
+            ]
+        },
+        "service_start": {
+            "brief": "Start the background service",
+            "desc": "Start through the platform manager. If it is already running it returns immediately.",
+            "examples": [
+                "service-start"
+            ],
+            "related": [
+                "service-stop",
+                "service-restart"
+            ]
+        },
+        "service_stop": {
+            "brief": "Stop the background service",
+            "desc": "Graceful shutdown first, then stop via the manager so it is not restarted.",
+            "examples": [
+                "service-stop"
+            ],
+            "related": [
+                "service-start"
+            ]
+        },
+        "service_restart": {
+            "brief": "Restart the background service",
+            "desc": "Use after editing config.json to apply the new settings.",
+            "examples": [
+                "service-restart"
+            ],
+            "related": [
+                "service-start",
+                "service-stop"
             ]
         }
     }
