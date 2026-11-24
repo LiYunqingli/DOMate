@@ -1,0 +1,38 @@
+{
+    "language": "zh-CN",
+    "server": {
+        "host": "127.0.0.1",
+        "port": 8765,
+        "token": "",
+        "auto_start": true,
+        "poll_timeout": 25,
+        "idle_exit_minutes": 0,
+        "log_level": "info",
+        "log_file": "logs/domate.log"
+    },
+    "command": {
+        "timeout": 30,
+        "retry": 1,
+        "default_wait": 8
+    },
+    "tab": {
+        "status_title": true,
+        "title_flash_ms": 600,
+        "default_width": 1440,
+        "default_height": 900
+    },
+    "output": {
+        "color": "auto",
+        "format": "text",
+        "max_text": 4000,
+        "max_nodes": 600
+    },
+    "security": {
+        "allow_js": true,
+        "allow_nav": true,
+        "allow_file": true
+    },
+    "screenshot": {
+        "dir": "screenshots"
+    }
+}
