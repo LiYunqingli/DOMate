@@ -33,9 +33,12 @@ from .ws import WSConnection, WSError
 SERVER_NAME = "DOMate"
 SERVER_VERSION = "1.0.0"
 
-#: 服务端给插件的 ping 间隔（秒），插件在 MV3 下靠它保活
-PING_INTERVAL = 20
-MAX_IDLE_PINGS = 3
+#: 服务端给插件的保活间隔（秒）。
+#: Chrome 116 起，Service Worker 里的 WebSocket 收发消息都会重置 30 秒空闲计时，
+#: 所以这里既发协议层 ping，也发一条 JSON ping，双向都有流量，
+#: 插件的工作线程就不会被浏览器回收，也就不会出现「过一会儿要重连」。
+PING_INTERVAL = 15
+MAX_IDLE_PINGS = 4
 
 
 class _Logger(object):
@@ -85,6 +88,10 @@ class DomateServer(ThreadingHTTPServer):
         self.hub = hub
         self.log = logger
         self.token = token or ""
+        self.keepalive = PING_INTERVAL
+        # 多久收不到任何字节就判定链路已死。取保活间隔的 3 倍且不低于 30 秒，
+        # 给 MV3 节流留足余量；配置里可显式覆盖。
+        self.silence_timeout = PING_INTERVAL * MAX_IDLE_PINGS
         self.started_at = time.time()
         self.last_activity = time.time()
         self._stop = threading.Event()
@@ -115,6 +122,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.server.log:
             self.server.log.info("%s %s" % (self.address_string(), fmt % args))
 
+    def handle_one_request(self):
+        """客户端半路断开是常态（Ctrl+C、超时放弃），不要让它冒泡成堆栈。"""
+        try:
+            BaseHTTPRequestHandler.handle_one_request(self)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            self.close_connection = True
+
     def _auth_ok(self):
         token = self.server.token
         if not token:
@@ -127,17 +141,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            # 客户端提前退出（Ctrl+C / 超时放弃）时不要抛出，否则会在日志里刷堆栈
+            self.close_connection = True
 
     def _send_empty(self, code=204):
-        self.send_response(code)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+        try:
+            self.send_response(code)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            self.close_connection = True
 
     def _read_json(self):
         try:
@@ -316,8 +337,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             if hello.get("tabs"):
                 self.hub.set_tabs(client.cid, hello.get("tabs"))
-            self.server.log.info("ws connected: %s (%s, %d tabs)" % (
-                client.cid, client.kind, len(client.tabs)))
+            self.server.log.info("ws connected: %s (%s, %d tabs, 累计重连 %d 次)" % (
+                client.cid, client.kind, len(client.tabs), self.hub.reconnects))
 
             conn.send_json({
                 "type": "welcome",
@@ -340,17 +361,23 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def _ws_loop(self, conn, client):
-        idle = 0
+        interval = max(5, int(self.server.keepalive or PING_INTERVAL))
+        limit = self.server.silence_timeout
         while not self.server.stopping:
             try:
-                msg = conn.recv_json(timeout=PING_INTERVAL)
+                msg = conn.recv_json(timeout=interval)
             except socket.timeout:
-                idle += 1
-                if idle > MAX_IDLE_PINGS:
-                    self.server.log.warn("ws ping timeout: %s" % client.cid)
+                # 读超时只说明「这一轮没消息」，不等于对端死了：
+                # 插件被 MV3 节流时 pong 会晚到几十秒，TCP 可能一直是通的。
+                # 真正的判据是持续多久没收到任何字节。
+                silent = time.time() - conn.last_rx
+                if silent > limit:
+                    self.server.log.warn("ws silent %.0fs, dropping %s" % (silent, client.cid))
                     return
                 try:
+                    # 协议层 ping 用于探活，JSON ping 用于让插件侧的 SW 计时器复位
                     conn.ping()
+                    conn.send_json({"type": "ping", "t": int(time.time() * 1000)})
                 except Exception:
                     return
                 continue
@@ -358,7 +385,6 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if msg is None:
                 return
-            idle = 0
             client.last_seen = time.time()
             self._ws_message(conn, client, msg)
 
@@ -377,6 +403,9 @@ class Handler(BaseHTTPRequestHandler):
                 conn.send_json({"type": "pong", "t": msg.get("t")})
             except Exception:
                 pass
+        elif mtype == "pong":
+            # 插件的保活回应，收到即说明链路活着（last_seen 已在循环里刷新）
+            pass
         elif mtype == "log":
             self.server.log.info("[browser] %s" % msg.get("text", ""))
         elif mtype == "hello":
@@ -398,6 +427,16 @@ def create_server(config, i18n, state):
         server = DomateServer((host, port), Handler, hub, logger, token=config.token)
     except OSError as exc:
         raise DomateError("E_PORT", port=port, error=str(exc), hint="port")
+    try:
+        server.keepalive = int(config.get("server.keepalive_seconds", PING_INTERVAL) or PING_INTERVAL)
+    except (TypeError, ValueError):
+        server.keepalive = PING_INTERVAL
+    # 静默判死窗口：默认跟着保活间隔走，最小 30 秒；配置为非 0 则用配置值
+    try:
+        silence = int(config.get("server.silence_seconds", 0) or 0)
+    except (TypeError, ValueError):
+        silence = 0
+    server.silence_timeout = silence if silence > 0 else max(server.keepalive * MAX_IDLE_PINGS, 30)
     return server
 
 

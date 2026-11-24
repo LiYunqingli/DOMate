@@ -6,6 +6,7 @@ labels 与 tabId，方便断言路由与标题状态文案是否正确。
 """
 
 import json
+import socket
 import threading
 import time
 
@@ -20,10 +21,13 @@ TABS = [
 
 
 class MockBrowser(threading.Thread):
-    def __init__(self, url, client_id="mock-ext"):
+    def __init__(self, url, client_id="mock-ext", frozen=False):
         threading.Thread.__init__(self, daemon=True)
         self.url = url
         self.client_id = client_id
+        # frozen=True 模拟僵死连接：握手后既不读也不回，但 TCP 还没断。
+        # 真机上这类连接常见于休眠唤醒、换网、NAT 超时之后。
+        self.frozen = frozen
         self.commands = []
         self.labels = {}
         self.running = True
@@ -40,9 +44,17 @@ class MockBrowser(threading.Thread):
                 "browser": "Mock",
                 "tabs": TABS,
             })
+            if self.frozen:
+                # 僵死连接：不发不收，但不主动关 socket
+                while self.running:
+                    time.sleep(0.2)
+                return
             while self.running:
                 try:
-                    msg = self.ws.recv_json(timeout=15)
+                    # 超时要比服务端保活间隔（15s）宽裕，否则空闲时会把假客户端"等死"
+                    msg = self.ws.recv_json(timeout=40)
+                except socket.timeout:
+                    continue
                 except Exception:
                     return
                 if msg is None:
@@ -51,6 +63,9 @@ class MockBrowser(threading.Thread):
                     self.labels = msg.get("labels") or {}
                 elif msg.get("type") == "command":
                     self.handle(msg)
+                elif msg.get("type") == "ping":
+                    # 和真实插件一致：收到 JSON ping 立刻回 pong
+                    self.ws.send_json({"type": "pong", "t": msg.get("t")})
                 elif msg.get("type") == "pong":
                     continue
         except Exception as exc:  # pragma: no cover

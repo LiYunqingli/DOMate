@@ -84,8 +84,21 @@ WebSocket 因为浏览器构造器不支持自定义头，改用查询参数 `&t
 | `{"type":"tab_update","tab":{...}}` | 客户端 → 服务 | 单个标签页更新 |
 | `{"type":"tab_removed","tabId":101}` | 客户端 → 服务 | 标签页关闭 |
 | `{"type":"ping","t":123}` | 双向 | 心跳，收到后回 `{"type":"pong","t":123}` |
+| `{"type":"pong","t":123}` | 双向 | 心跳应答，收到即视为链路存活 |
 
-服务端 20 秒无消息会主动发 ping，连续 3 次无响应即断开该客户端。
+服务端每 `server.keepalive_seconds`（默认 15 秒）没读到消息就主动发一次 ping：既发 WebSocket
+协议层 ping，也发一条 JSON ping。协议层 ping 用于探活，JSON ping 用于让浏览器侧的消息流
+保持活跃——Chrome 116 起，Service Worker 里的 WebSocket 收发消息会重置 30 秒空闲计时，
+所以这条心跳同时也是「防止插件被浏览器回收」的保活信号。
+
+**判死依据是「多久没收到任何字节」，不是「多少次读超时」。** 读超时只说明这一轮没消息：
+MV3 的 Service Worker 被浏览器节流时 pong 可能晚到几十秒，而 TCP 一直是通的。默认阈值是
+`max(keepalive_seconds × 4, 30)` 秒（约 60 秒），可用 `server.silence_seconds` 覆盖。
+只有真正收不到任何字节（休眠唤醒、换网、NAT 超时这类僵死连接）才会被断开。
+
+客户端断线后应尽快重连：建议 250ms 起步、上限 800ms、持续 15 秒，之后退到秒级。
+服务端在派发命令时如果没有任何客户端，会等 `command.connect_wait`（默认 3.5 秒）
+再返回 `E_NO_BROWSER`，用于覆盖这段重连空窗。
 
 ## 3. 选择器结构
 
