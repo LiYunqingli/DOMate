@@ -14,9 +14,22 @@ let labels = {};
 let clientId = '';
 let connecting = false;
 let reconnectTimer = null;
-let reconnectDelay = 1000;
 let heartbeatTimer = null;
 let tabSyncTimer = null;
+
+// 重连节奏：
+//   断线后的头 15 秒（大概率是本地服务刚重启），用 250ms 起步的快重试，
+//   这样服务一端口就绪就能立刻连上，用户几乎看不到空窗；
+//   超过 15 秒还连不上（服务真的关了），才退到秒级，避免一直空转耗电。
+const FAST_WINDOW_MS = 15000;
+const FAST_BASE_MS = 250;
+const FAST_MAX_MS = 800;
+const SLOW_BASE_MS = 1000;
+const SLOW_MAX_MS = 5000;
+
+let droppedAt = 0;      // 本次断线的时间戳，0 表示没断过
+let attempt = 0;        // 连续失败次数，用于计算退避
+let lastClose = null;   // 最近一次断开原因，供状态查询排查
 
 // -------------------------------------------------------------------- 小工具
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,7 +83,16 @@ async function connect() {
     if (connecting) return;
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
-    const settings = await getSettings();
+    // 先占位再 await，避免并发的 kick() 同时开出两个连接
+    connecting = true;
+    let settings;
+    try {
+        settings = await getSettings();
+    } catch (e) {
+        connecting = false;
+        scheduleReconnect();
+        return;
+    }
     clientId = settings.clientId || ('ext-' + Math.random().toString(36).slice(2, 10));
     if (!settings.clientId) await chrome.storage.local.set({ clientId });
 
@@ -79,7 +101,6 @@ async function connect() {
     const url = 'ws://' + settings.host + ':' + settings.port + '/ws' + query;
     socketUrl = url;
 
-    connecting = true;
     let ws;
     try {
         ws = new WebSocket(url);
@@ -92,7 +113,8 @@ async function connect() {
 
     ws.onopen = async () => {
         connecting = false;
-        reconnectDelay = 1000;
+        attempt = 0;
+        droppedAt = 0;
         setBadge(true);
         const tabs = await allTabs();
         send({
@@ -118,6 +140,11 @@ async function connect() {
             labels = msg.labels || labels;
             return;
         }
+        if (msg.type === 'ping') {
+            // 服务端主动保活：必须回一条，双方的流量都能让工作线程免于回收
+            send({ type: 'pong', t: msg.t });
+            return;
+        }
         if (msg.type === 'command') {
             handleCommand(msg);
         }
@@ -127,23 +154,49 @@ async function connect() {
         // 交给 onclose 统一处理重连
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
         if (socket === ws) socket = null;
         connecting = false;
         setBadge(false);
         stopHeartbeat();
+        // 只记录「这次断线」的起点，重复失败时不要刷新它，
+        // 否则快重试窗口永远不过期，服务真关了也会一直 250ms 打一次。
+        if (!droppedAt) droppedAt = Date.now();
+        lastClose = {
+            at: Date.now(),
+            code: event && event.code,
+            reason: (event && event.reason) || '',
+            url: socketUrl
+        };
         scheduleReconnect();
     };
 }
 
 function scheduleReconnect() {
     if (reconnectTimer) return;
+    const fast = droppedAt > 0 && (Date.now() - droppedAt) < FAST_WINDOW_MS;
+    const base = fast ? FAST_BASE_MS : SLOW_BASE_MS;
+    const ceiling = fast ? FAST_MAX_MS : SLOW_MAX_MS;
+    const delay = Math.min(Math.round(base * Math.pow(1.6, attempt)), ceiling);
+    attempt += 1;
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         connect();
-    }, reconnectDelay);
-    // 指数退避，最长 10 秒，避免服务没开时疯狂重连
-    reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    }, delay);
+}
+
+// 用户一动（切标签、切窗口、页面加载）就顺便补连一次：
+// service worker 被回收后这些事件也会把它唤醒，比等 30 秒一次的闹钟快得多。
+function kick() {
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+    if (connecting) return;
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    attempt = 0;
+    if (!droppedAt) droppedAt = Date.now();
+    connect();
 }
 
 function disconnect() {
@@ -155,12 +208,16 @@ function disconnect() {
 
 function startHeartbeat() {
     stopHeartbeat();
-    // 20 秒一次心跳：既探测服务存活，也让 MV3 service worker 不被回收
+    // 15 秒一次心跳，两个作用：
+    //   1. 探测服务是否还活着；
+    //   2. Chrome 116+ 规定「WS 收发消息」会重置 Service Worker 的 30 秒空闲计时，
+    //      所以只要有这条心跳，工作线程就不会被回收，连接也就不会断。
     heartbeatTimer = setInterval(() => {
         if (!send({ type: 'ping', t: Date.now() })) {
             stopHeartbeat();
+            scheduleReconnect();
         }
-    }, 20000);
+    }, 15000);
 }
 
 function stopHeartbeat() {
@@ -583,8 +640,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || msg.type !== 'domate-control') return false;
     if (msg.action === 'reconnect') {
         disconnect();
-        reconnectDelay = 500;
-        setTimeout(connect, 100);
+        droppedAt = Date.now();
+        attempt = 0;
+        setTimeout(kick, 50);
         sendResponse({ ok: true });
         return false;
     }
@@ -596,7 +654,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 url: socketUrl,
                 labels: labels,
                 clientId: clientId,
-                version: EXT_VERSION
+                version: EXT_VERSION,
+                attempts: attempt,
+                lastClose: lastClose
             }
         });
         return false;
@@ -604,23 +664,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
 });
 
-chrome.runtime.onStartup.addListener(() => connect());
-chrome.runtime.onInstalled.addListener(() => connect());
+chrome.runtime.onStartup.addListener(() => kick());
+chrome.runtime.onInstalled.addListener(() => kick());
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.host || changes.port || changes.token) {
         disconnect();
-        reconnectDelay = 500;
-        connect();
+        droppedAt = Date.now();
+        attempt = 0;
+        setTimeout(kick, 50);
     }
 });
 
-// MV3 的 service worker 会被回收，用定时任务把它唤醒并补连
+// 事件驱动补连：普通用户操作就能把断开的连接立刻接回来
+['onActivated', 'onCreated', 'onRemoved', 'onMoved'].forEach((name) => {
+    try { chrome.tabs[name].addListener(() => kick()); } catch (e) { /* 忽略 */ }
+});
+try {
+    chrome.windows.onFocusChanged.addListener(() => kick());
+} catch (e) { /* 忽略 */ }
+try {
+    if (chrome.idle && chrome.idle.onStateChanged) {
+        chrome.idle.onStateChanged.addListener((state) => {
+            if (state === 'active') kick();
+        });
+    }
+} catch (e) { /* 没申请 idle 权限时忽略 */ }
+
+// MV3 的 service worker 会被回收，用定时任务兜底：即使没有用户操作，
+// 最多 30 秒（Chrome 120+；更低版本为 1 分钟）也会被唤醒补连一次。
 try {
     chrome.alarms.create('domate-keepalive', { periodInMinutes: 0.5 });
     chrome.alarms.onAlarm.addListener((alarm) => {
-        if (alarm.name === 'domate-keepalive') connect();
+        if (alarm.name === 'domate-keepalive') kick();
     });
 } catch (e) { /* 忽略 */ }
 
-connect();
+kick();
