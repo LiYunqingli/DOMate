@@ -1,0 +1,772 @@
+{
+    "meta": {
+        "name": "DOMate",
+        "version": "1.0.0",
+        "time": "2026-11-24",
+        "author": "LiYunqingli",
+        "desc": "终端控制浏览器的 AI 工具"
+    },
+    "status": {
+        "title": {
+            "read": "读取中",
+            "act": "操作中",
+            "exec": "执行中",
+            "ok": "完成",
+            "err": "出错"
+        }
+    },
+    "err": {
+        "E_USAGE": "参数不正确：{message}",
+        "E_SELECTOR": "选择器无法解析：{message}",
+        "E_NO_TAB": "找不到匹配的标签页（{message}）",
+        "E_NO_BROWSER": "浏览器插件未连接，无法执行",
+        "E_BROWSER": "浏览器端执行失败",
+        "E_BROWSER_GONE": "与浏览器插件的连接已断开",
+        "E_TIMEOUT": "命令超时（{action}，{timeout} 秒）",
+        "E_ELEMENT": "元素不存在或不可交互",
+        "E_SCRIPT": "页面脚本执行出错：{message}",
+        "E_CAPTURE": "截图失败：{message}",
+        "E_DAEMON": "本地服务异常",
+        "E_DAEMON_DOWN": "本地服务未运行",
+        "E_DAEMON_START": "本地服务启动失败（端口 {port}）",
+        "E_RPC": "与本地服务通讯失败：{message}",
+        "E_PORT": "端口 {port} 不可用：{error}",
+        "E_CONFIG": "配置文件有误",
+        "E_LANG": "语言包不存在或语言不支持",
+        "E_FILE": "文件读取失败",
+        "E_JSON": "JSON 格式错误",
+        "E_REQUEST": "请求格式错误",
+        "E_DISABLED": "该能力已被配置禁用",
+        "E_PERM": "缺少浏览器权限，请检查插件授权",
+        "E_UNSUPPORTED": "当前浏览器不支持该操作",
+        "E_PROTOCOL": "协议错误",
+        "E_INTERNAL": "内部错误",
+        "hint": {
+            "usage": "执行 domate help <命令> 查看用法",
+            "daemon": "执行 domate serve 手动启动服务，或 domate doctor 自检",
+            "browser": "打开浏览器并确认 DOMate 插件已加载、状态为「已连接」",
+            "tab": "执行 domate tab list 查看可用标签页",
+            "timeout": "页面可能较慢，用 --timeout 30 放大等待时间，或检查页面是否阻塞",
+            "config": "检查 config.json 是否为合法 JSON，或执行 domate config reset",
+            "port": "改用其它端口：domate serve --port 8790",
+            "debug": "设置环境变量 DOMATE_DEBUG=1 可查看完整堆栈",
+            "selector": "用 domate dom outline 查看可点击元素及其索引"
+        }
+    },
+    "field": {
+        "server": "服务",
+        "uptime": "运行时长",
+        "version": "版本",
+        "browser": "浏览器",
+        "conn": "连接方式",
+        "tabs": "标签页",
+        "selected": "已选中",
+        "seq": "序号",
+        "id": "ID",
+        "title": "标题",
+        "url": "地址",
+        "flags": "状态",
+        "tag": "标签",
+        "type": "类型",
+        "text": "文本",
+        "state": "状态",
+        "n": "#",
+        "rect": "位置尺寸",
+        "idx": "索引",
+        "classes": "类名",
+        "visible": "可见",
+        "enabled": "可用",
+        "value": "值",
+        "attrs": "属性",
+        "viewport": "视口",
+        "scroll": "滚动",
+        "lang": "语言",
+        "counts": "统计",
+        "time": "时间",
+        "event": "事件",
+        "target": "目标",
+        "size": "窗口",
+        "path": "路径",
+        "hint": "提示"
+    },
+    "flag": {
+        "active": "活动",
+        "pinned": "固定",
+        "selected": "选中",
+        "disabled": "禁用",
+        "hidden": "隐藏",
+        "visible": "可见",
+        "checked": "已勾选"
+    },
+    "tab": {
+        "flag": {
+            "active": "活动",
+            "pinned": "固定",
+            "selected": "选中"
+        }
+    },
+    "arg": {
+        "selector": "元素选择器：css / text= / xpath= / 纯数字索引",
+        "index": "在匹配结果中取第 N 个（从 1 开始）",
+        "json": "输出 JSON（供 AI 或脚本解析）",
+        "tab": "目标标签页：id / 序号 / 标题片段，缺省用已选中的标签页",
+        "timeout": "命令超时秒数",
+        "lang": "语言：zh-CN / en-US",
+        "port": "本地服务端口（覆盖 config.json）",
+        "color": "颜色：auto / always / never"
+    },
+    "msg": {
+        "daemon_stopped": "本地服务已停止",
+        "daemon_not_running": "本地服务本来就没在运行",
+        "daemon_down": "本地服务未运行",
+        "status_title": "运行状态",
+        "browser_offline": "浏览器插件未连接：请打开浏览器并确认 DOMate 插件已启用",
+        "config_title": "配置文件 {path}",
+        "config_saved": "已保存 {key} = {value}",
+        "config_reset": "配置已恢复默认值",
+        "doctor_title": "环境自检",
+        "doctor_ok": "全部检查通过",
+        "doctor_failed": "存在问题：{names}",
+        "no_tab": "没有可用标签页",
+        "tab_total": "共 {count} 个标签页",
+        "tab_selected": "已选中标签页 #{id} {title}",
+        "tab_created": "已新建标签页 #{id} {url}",
+        "tab_closed": "已关闭 {count} 个标签页：{ids}",
+        "tab_activated": "已激活标签页 #{id} {title}",
+        "tab_title_set": "标题已改为：{title}",
+        "tab_reloaded": "标签页已刷新",
+        "tab_stopped": "已停止加载",
+        "tree_title": "DOM 结构（{count} 个节点）",
+        "truncated": "输出已截断（共 {count} 个节点），用 --depth 或 --selector 缩小范围",
+        "outline_empty": "页面上没有找到可交互元素",
+        "outline_hint": "共 {count} 个可交互元素，可直接用索引操作：domate click 3",
+        "empty_text": "目标元素没有文本内容",
+        "attr_missing": "元素上没有属性 {name}",
+        "no_match": "没有匹配的元素",
+        "match_count": "共匹配 {count} 个元素",
+        "wait_found": "条件已满足（{elapsed} ms）",
+        "wait_timeout": "等待超时（{timeout} 秒）",
+        "clicked": "已点击 {detail}",
+        "typed": "已输入 {count} 个字符 {detail}",
+        "key_sent": "已发送按键 {keys}",
+        "hovered": "已悬停 {detail}",
+        "scrolled": "已滚动，当前 Y = {y}",
+        "selected": "已选中选项 {value}",
+        "checked": "已勾选",
+        "unchecked": "已取消勾选",
+        "focused": "已聚焦 {detail}",
+        "filled": "已填充 {count} 个字段",
+        "js_type": "返回类型：{type}",
+        "navigated": "已打开 {url} {title}",
+        "reloaded": "页面已刷新",
+        "page_counts": "链接 {links} / 表单 {forms} / 图片 {images} / 元素 {elements}",
+        "shot_saved": "截图已保存：{path}（{size} 字节）",
+        "console_empty": "没有捕获到控制台日志",
+        "events_empty": "没有捕获到页面事件",
+        "help_not_found": "没有找到命令：{topic}",
+        "help_try_overview": "执行 domate help 查看全部命令",
+        "guide_missing": "文档不存在：{path}",
+        "interrupted": "已中断",
+        "internal": "未预期的错误：{error}",
+        "install_title": "安装浏览器插件",
+        "install_steps": [
+            "Chrome/Edge 打开 chrome://extensions 并开启「开发者模式」",
+            "点「加载已解压的扩展程序」，选择本项目的 extension 目录",
+            "点插件图标确认显示「已连接」（服务需先启动：domate serve）"
+        ],
+        "browser_short": "未连接",
+        "browser_connected": "已连接"
+    },
+    "help": {
+        "title": "{name} {version} · 终端控制浏览器",
+        "intro": "用命令行读取页面结构、执行点击输入、注入脚本。命令会通过本地服务转发给浏览器插件执行。",
+        "usage": "用法",
+        "tips_title": "常用姿势",
+        "tips": [
+            "先 domate tab list 看有哪些页面，domate tab use 2 选中目标",
+            "domate dom outline 拿到可交互元素索引，然后 domate click 3 直接点",
+            "domate dom tree --depth 4 看结构，domate dom text \"css=.price\" 取文本",
+            "domate js \"document.title\" 求值，domate js @script.js 注入长脚本",
+            "所有命令加 --json 输出结构化结果，方便程序/AI 解析"
+        ],
+        "more": "详细文档：domate help --guide   单命令帮助：domate help <命令>",
+        "options": "选项",
+        "examples": "示例",
+        "related": "相关命令",
+        "group": {
+            "start": "服务与配置",
+            "tab": "标签页",
+            "dom": "读取页面",
+            "act": "交互操作",
+            "script": "脚本",
+            "page": "页面与截图"
+        },
+        "quick": [
+            "domate tab list",
+            "domate dom outline",
+            "domate click 3",
+            "domate dom text \"css=h1\""
+        ]
+    },
+    "cmd": {
+        "serve": {
+            "brief": "启动本地服务（前台运行）",
+            "desc": "启动 HTTP + WebSocket 本地服务，插件连上来后即可收发命令。日常使用不需要手动启动：其它命令会自动拉起后台服务。",
+            "opt": {
+                "foreground": "前台运行（默认）",
+                "daemon": "后台静默运行（供自动拉起使用）"
+            },
+            "examples": [
+                "serve",
+                "serve --port 8790"
+            ],
+            "related": [
+                "status",
+                "stop"
+            ]
+        },
+        "stop": {
+            "brief": "停止本地服务",
+            "desc": "关闭后台服务进程，插件的连接会随之断开。",
+            "examples": [
+                "stop"
+            ]
+        },
+        "status": {
+            "brief": "查看服务与浏览器连接状态",
+            "desc": "显示服务端口、运行时长、插件连接情况以及标签页数量。",
+            "examples": [
+                "status",
+                "status --json"
+            ]
+        },
+        "doctor": {
+            "brief": "环境自检",
+            "desc": "检查 Python 版本、配置文件、端口占用、服务状态、插件连接、日志目录是否正常。",
+            "examples": [
+                "doctor"
+            ]
+        },
+        "version": {
+            "brief": "显示版本信息",
+            "desc": "输出工具版本与构建时间。",
+            "examples": [
+                "version"
+            ]
+        },
+        "config": {
+            "brief": "读写配置项",
+            "desc": "不带参数列出全部配置；get/set 读写单个键（点号分隔，如 server.port）；reset 恢复默认。",
+            "arg": {
+                "action": "操作：list / get / set / reset",
+                "key": "配置键，如 language、server.port",
+                "value": "要写入的值"
+            },
+            "examples": [
+                "config",
+                "config get language",
+                "config set language en-US",
+                "config set server.port 8790"
+            ],
+            "related": [
+                "status"
+            ]
+        },
+        "help": {
+            "brief": "查看帮助",
+            "desc": "不带参数显示命令总览；带命令名显示该命令的详细用法；--guide 打开完整使用文档。",
+            "arg": {
+                "topic": "命令名，如 click、tab list"
+            },
+            "opt": {
+                "guide": "打印完整使用指南"
+            },
+            "examples": [
+                "help",
+                "help click",
+                "help tab list",
+                "help --guide"
+            ]
+        },
+        "tab": {
+            "brief": "标签页管理（list/use/new/close/...）"
+        },
+        "tab_list": {
+            "brief": "列出所有标签页",
+            "desc": "显示序号、ID、标题、地址与状态标记。序号可直接用于 tab use / tab close。",
+            "examples": [
+                "tab list",
+                "tab list --json"
+            ]
+        },
+        "tab_current": {
+            "brief": "显示当前选中的标签页",
+            "desc": "显示已选中标签页的 ID、标题、地址、窗口尺寸与加载状态。",
+            "examples": [
+                "tab current"
+            ]
+        },
+        "tab_use": {
+            "brief": "选中标签页",
+            "desc": "把某个标签页设为后续命令的默认目标。参数可以是 ID、列表序号、或标题/地址片段。",
+            "arg": {
+                "target": "标签页 ID、序号或标题/地址片段"
+            },
+            "examples": [
+                "tab use 2",
+                "tab use 123456",
+                "tab use github"
+            ],
+            "related": [
+                "tab list"
+            ]
+        },
+        "tab_new": {
+            "brief": "新建标签页",
+            "desc": "打开一个新标签页。默认立即激活它；用 --background 在后台打开，--select 顺便设为默认目标。",
+            "arg": {
+                "url": "要打开的地址，缺省为 about:blank"
+            },
+            "opt": {
+                "background": "在后台打开，不抢焦点",
+                "pinned": "固定标签页",
+                "window": "在新窗口打开",
+                "select": "创建后设为默认目标标签页"
+            },
+            "examples": [
+                "tab new https://example.com",
+                "tab new https://example.com --background --select"
+            ],
+            "related": [
+                "goto",
+                "tab close"
+            ]
+        },
+        "tab_close": {
+            "brief": "关闭标签页",
+            "desc": "关闭指定 ID 的标签页；不带参数时关闭当前选中的标签页。--others 关闭除当前外的全部，--right 关闭右侧全部。",
+            "arg": {
+                "ids": "要关闭的标签页 ID（可多个）"
+            },
+            "opt": {
+                "others": "关闭除目标外的所有标签页",
+                "right": "关闭目标右侧的所有标签页"
+            },
+            "examples": [
+                "tab close",
+                "tab close 123 124",
+                "tab close --others"
+            ],
+            "related": [
+                "tab list"
+            ]
+        },
+        "tab_activate": {
+            "brief": "激活标签页（切到前台）",
+            "desc": "把指定标签页切到前台并设为默认目标。",
+            "arg": {
+                "target": "标签页 ID 或序号，缺省为已选中的"
+            },
+            "examples": [
+                "tab activate 2"
+            ]
+        },
+        "tab_title": {
+            "brief": "修改标签页标题",
+            "desc": "直接改写页面的 document.title（浏览器标签栏随之变化）。注意：执行命令时的「读取中/操作中」状态标题是工具自动加的，会自动还原。",
+            "arg": {
+                "title": "新的标题文本"
+            },
+            "examples": [
+                "tab title 正在处理订单"
+            ]
+        },
+        "tab_reload": {
+            "brief": "刷新标签页",
+            "desc": "重新加载当前标签页，--hard 跳过缓存。",
+            "opt": {
+                "hard": "强制刷新（忽略缓存）"
+            },
+            "examples": [
+                "tab reload",
+                "tab reload --hard"
+            ]
+        },
+        "tab_stop": {
+            "brief": "停止加载",
+            "desc": "中断当前标签页正在进行的页面加载。",
+            "examples": [
+                "tab stop"
+            ]
+        },
+        "dom": {
+            "brief": "读取页面结构（tree/outline/text/...）"
+        },
+        "dom_tree": {
+            "brief": "输出精简 DOM 树",
+            "desc": "把页面转成带缩进的元素树，自动忽略 script/style 等噪声节点，适合快速了解页面骨架。",
+            "opt": {
+                "depth": "最大层级，默认 3",
+                "max": "最多输出多少个节点，默认取配置 output.max_nodes"
+            },
+            "examples": [
+                "dom tree",
+                "dom tree --depth 5",
+                "dom tree \"css=#main\" --depth 4"
+            ],
+            "related": [
+                "dom outline",
+                "dom text"
+            ]
+        },
+        "dom_outline": {
+            "brief": "列出可交互元素（带索引）",
+            "desc": "扫描链接、按钮、输入框、可点击区域，给每个元素打上索引并输出。之后可以直接 domate click 3 操作它，无需再写选择器。",
+            "opt": {
+                "max": "最多列出多少个，默认 300",
+                "all": "包含隐藏与禁用元素"
+            },
+            "examples": [
+                "dom outline",
+                "dom outline --all",
+                "dom outline --json"
+            ],
+            "related": [
+                "click",
+                "type"
+            ]
+        },
+        "dom_html": {
+            "brief": "读取元素 HTML",
+            "desc": "输出匹配元素的 outerHTML；不传选择器时输出整个页面。",
+            "examples": [
+                "dom html",
+                "dom html \"css=#app\"",
+                "dom html \"//table[1]\""
+            ],
+            "related": [
+                "dom text"
+            ]
+        },
+        "dom_text": {
+            "brief": "读取元素文本",
+            "desc": "输出元素的可见文本（innerText），自动压缩空行。",
+            "examples": [
+                "dom text \"css=h1\"",
+                "dom text \"text=价格\""
+            ],
+            "related": [
+                "dom html"
+            ]
+        },
+        "dom_find": {
+            "brief": "查找匹配元素列表",
+            "desc": "列出所有匹配项，带序号、标签、文本、位置尺寸与可见性，便于挑选 --index。",
+            "opt": {
+                "limit": "最多返回多少个，默认 30"
+            },
+            "examples": [
+                "dom find \"css=.item\"",
+                "dom find \"text=删除\" --limit 10"
+            ]
+        },
+        "dom_attr": {
+            "brief": "读取元素属性",
+            "desc": "读取指定属性的值，例如 href、src、data-id、aria-label。",
+            "arg": {
+                "name": "属性名"
+            },
+            "examples": [
+                "dom attr \"css=a.logo\" href",
+                "dom attr \"css=input\" placeholder"
+            ]
+        },
+        "dom_count": {
+            "brief": "统计匹配元素数量",
+            "desc": "输出匹配到的元素个数，适合做断言或分页判断。",
+            "examples": [
+                "dom count \"css=.item\"",
+                "dom count \"text=下一页\""
+            ]
+        },
+        "dom_info": {
+            "brief": "查看元素详细信息",
+            "desc": "输出标签、id、类名、位置尺寸、可见性、可编辑状态、文本、值以及全部属性。",
+            "examples": [
+                "dom info \"css=#submit\"",
+                "dom info 3"
+            ]
+        },
+        "dom_wait": {
+            "brief": "等待元素或文本出现/消失",
+            "desc": "轮询直到条件满足或超时。适合等待异步渲染、loading 结束、弹窗关闭。",
+            "opt": {
+                "text": "等待页面中出现该文本",
+                "gone": "反向等待：元素消失"
+            },
+            "examples": [
+                "dom wait \"css=.result\" --timeout 10",
+                "dom wait --text \"支付成功\"",
+                "dom wait \"css=.loading\" --gone"
+            ]
+        },
+        "click": {
+            "brief": "点击元素",
+            "desc": "滚动到元素可视区后派发完整的鼠标事件序列（pointerdown/mousedown/mouseup/click）。支持双击、右键、强制点击（绕过可见性检查）。注意：事件由脚本派发，isTrusted=false。",
+            "opt": {
+                "double": "双击",
+                "right": "右键（contextmenu）",
+                "force": "忽略可见性/遮挡检查，直接派发",
+                "wait_nav": "点击后等待页面加载完成"
+            },
+            "examples": [
+                "click \"text=登录\"",
+                "click \"css=#submit\" --wait-nav",
+                "click 3",
+                "click \"css=.item\" --index 2 --double"
+            ],
+            "related": [
+                "dom outline",
+                "type"
+            ]
+        },
+        "type": {
+            "brief": "向输入框输入文本",
+            "desc": "聚焦元素后写入文本并触发 input/change 事件（兼容 React/Vue 受控组件）。默认先清空原内容。用 @文件 可以把长文本从文件读入。",
+            "arg": {
+                "text": "要输入的文本，以 @ 开头表示从文件读取"
+            },
+            "opt": {
+                "append": "追加而不是清空",
+                "submit": "输入后回车提交",
+                "delay": "每个字符间隔毫秒数（模拟真人输入）"
+            },
+            "examples": [
+                "type \"css=#q\" \"DOMate\"",
+                "type \"css=input[name=password]\" \"@pwd.txt\" --submit"
+            ],
+            "related": [
+                "fill",
+                "key"
+            ]
+        },
+        "key": {
+            "brief": "发送按键",
+            "desc": "向当前焦点发送按键，支持组合键：Enter、Escape、Tab、Ctrl+A、Ctrl+Shift+Enter、ArrowDown 等。",
+            "arg": {
+                "keys": "按键或组合键"
+            },
+            "examples": [
+                "key Enter",
+                "key \"Ctrl+A\"",
+                "key Escape"
+            ],
+            "related": [
+                "type"
+            ]
+        },
+        "hover": {
+            "brief": "悬停元素",
+            "desc": "派发 mouseover/mouseenter/mousemove，用于触发下拉菜单、悬浮提示。",
+            "examples": [
+                "hover \"css=.menu\""
+            ]
+        },
+        "scroll": {
+            "brief": "滚动页面",
+            "desc": "把元素滚动到可视区，或按像素滚动，或滚到顶部/底部。",
+            "opt": {
+                "by": "向下滚动多少像素（负数向上）",
+                "top": "滚到顶部",
+                "bottom": "滚到底部",
+                "smooth": "平滑滚动"
+            },
+            "examples": [
+                "scroll \"css=#footer\"",
+                "scroll --by 800",
+                "scroll --bottom"
+            ]
+        },
+        "select": {
+            "brief": "选择下拉框选项",
+            "desc": "对 <select> 按 value、文本（--label）或序号（--option-index）选中，并触发 change 事件。",
+            "arg": {
+                "value": "选项的 value"
+            },
+            "opt": {
+                "label": "按选项文本匹配",
+                "option_index": "按选项序号匹配（从 0 开始）"
+            },
+            "examples": [
+                "select \"css=#city\" 310000",
+                "select \"css=#city\" --label 上海"
+            ]
+        },
+        "check": {
+            "brief": "勾选复选框/单选框",
+            "desc": "把 checkbox/radio 置为选中状态（已选中则不变）。",
+            "examples": [
+                "check \"css=#agree\""
+            ]
+        },
+        "uncheck": {
+            "brief": "取消勾选",
+            "desc": "把 checkbox 置为未选中状态。",
+            "examples": [
+                "uncheck \"css=#subscribe\""
+            ]
+        },
+        "focus": {
+            "brief": "聚焦元素",
+            "desc": "调用元素的 focus()，常用于让键盘输入落到目标元素。",
+            "examples": [
+                "focus \"css=#search\""
+            ]
+        },
+        "fill": {
+            "brief": "批量填表",
+            "desc": "一次填多个字段，格式为 选择器=值。每个字段都会聚焦、清空、写入并触发事件。",
+            "arg": {
+                "pairs": "多组 选择器=值"
+            },
+            "examples": [
+                "fill \"#user=admin\" \"#pwd=123456\"",
+                "fill \"css=input[name=email]=a@b.com\""
+            ]
+        },
+        "js": {
+            "brief": "注入并执行 JavaScript",
+            "desc": "在页面主世界执行代码并返回最后一个表达式的值。代码里可以直接访问页面的全局变量与函数；返回 DOM 节点会自动转成文本描述。用 @文件 注入长脚本。",
+            "arg": {
+                "code": "JavaScript 代码，以 @ 开头表示从文件读取"
+            },
+            "opt": {
+                "isolated": "在隔离世界执行（拿不到页面变量，但更安全）"
+            },
+            "examples": [
+                "js \"document.title\"",
+                "js \"document.querySelectorAll('a').length\"",
+                "js @script.js",
+                "js \"window.scrollTo(0, 9999)\""
+            ],
+            "related": [
+                "eval",
+                "dom text"
+            ]
+        },
+        "eval": {
+            "brief": "求值一个表达式",
+            "desc": "js 的简写，面向「取一个值」的场景，自动过滤函数与循环引用。",
+            "arg": {
+                "code": "要求值的表达式"
+            },
+            "examples": [
+                "eval \"location.href\"",
+                "eval \"document.cookie\""
+            ]
+        },
+        "page": {
+            "brief": "页面概览信息",
+            "desc": "输出地址、标题、加载状态、视口尺寸、滚动位置、页面语言以及链接/表单/图片/元素数量。",
+            "examples": [
+                "page",
+                "page --json"
+            ],
+            "related": [
+                "dom tree"
+            ]
+        },
+        "goto": {
+            "brief": "打开网址",
+            "desc": "让当前标签页跳转到指定地址，默认等到加载完成再返回。",
+            "arg": {
+                "url": "目标地址"
+            },
+            "opt": {
+                "no_wait": "不等待加载完成"
+            },
+            "examples": [
+                "goto https://example.com",
+                "goto https://example.com --no-wait"
+            ],
+            "related": [
+                "tab new"
+            ]
+        },
+        "back": {
+            "brief": "后退",
+            "desc": "浏览器历史后退，默认 1 步。",
+            "opt": {
+                "steps": "后退步数"
+            },
+            "examples": [
+                "back",
+                "back --steps 2"
+            ]
+        },
+        "forward": {
+            "brief": "前进",
+            "desc": "浏览器历史前进，默认 1 步。",
+            "opt": {
+                "steps": "前进步数"
+            },
+            "examples": [
+                "forward"
+            ]
+        },
+        "reload": {
+            "brief": "刷新页面",
+            "desc": "重新加载当前页面，--hard 跳过缓存。",
+            "opt": {
+                "hard": "强制刷新"
+            },
+            "examples": [
+                "reload",
+                "reload --hard"
+            ]
+        },
+        "shot": {
+            "brief": "截图",
+            "desc": "截取当前标签页的可见区域并保存为图片文件。不传路径时自动存到 screenshots 目录。",
+            "arg": {
+                "path": "保存路径，缺省自动命名"
+            },
+            "opt": {
+                "format": "png 或 jpeg",
+                "quality": "jpeg 质量 1-100"
+            },
+            "examples": [
+                "shot",
+                "shot out/page.png",
+                "shot out/page.jpg --format jpeg"
+            ],
+            "related": [
+                "page"
+            ]
+        },
+        "console": {
+            "brief": "读取页面控制台日志",
+            "desc": "返回最近捕获的 console 输出（插件在页面加载时已开始收集）。--clear 取完即清空。",
+            "opt": {
+                "clear": "读取后清空缓冲区",
+                "limit": "最多返回条数"
+            },
+            "examples": [
+                "console",
+                "console --limit 50 --clear"
+            ]
+        },
+        "events": {
+            "brief": "查看页面事件记录",
+            "desc": "列出用户在页面上产生的点击、输入、提交等事件，便于确认上一步操作是否生效。",
+            "opt": {
+                "clear": "读取后清空缓冲区",
+                "limit": "最多返回条数"
+            },
+            "examples": [
+                "events",
+                "events --limit 20"
+            ]
+        }
+    }
+}

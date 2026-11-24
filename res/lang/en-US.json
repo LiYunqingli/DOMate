@@ -1,0 +1,772 @@
+{
+    "meta": {
+        "name": "DOMate",
+        "version": "1.0.0",
+        "time": "2026-11-24",
+        "author": "LiYunqingli",
+        "desc": "Drive the browser from your terminal"
+    },
+    "status": {
+        "title": {
+            "read": "Reading",
+            "act": "Acting",
+            "exec": "Running",
+            "ok": "Done",
+            "err": "Failed"
+        }
+    },
+    "err": {
+        "E_USAGE": "Invalid arguments: {message}",
+        "E_SELECTOR": "Cannot parse selector: {message}",
+        "E_NO_TAB": "No matching tab ({message})",
+        "E_NO_BROWSER": "Browser extension is not connected",
+        "E_BROWSER": "Browser-side execution failed",
+        "E_BROWSER_GONE": "Connection to the extension was lost",
+        "E_TIMEOUT": "Command timed out ({action}, {timeout}s)",
+        "E_ELEMENT": "Element missing or not interactable",
+        "E_SCRIPT": "Page script error: {message}",
+        "E_CAPTURE": "Screenshot failed: {message}",
+        "E_DAEMON": "Local service error",
+        "E_DAEMON_DOWN": "Local service is not running",
+        "E_DAEMON_START": "Failed to start local service (port {port})",
+        "E_RPC": "Failed to reach local service: {message}",
+        "E_PORT": "Port {port} unavailable: {error}",
+        "E_CONFIG": "Invalid configuration",
+        "E_LANG": "Language pack missing or unsupported",
+        "E_FILE": "Cannot read file",
+        "E_JSON": "Invalid JSON",
+        "E_REQUEST": "Malformed request",
+        "E_DISABLED": "This capability is disabled in config",
+        "E_PERM": "Missing browser permission",
+        "E_UNSUPPORTED": "Not supported by this browser",
+        "E_PROTOCOL": "Protocol error",
+        "E_INTERNAL": "Internal error",
+        "hint": {
+            "usage": "Run domate help <command> for usage",
+            "daemon": "Start it with domate serve, or run domate doctor",
+            "browser": "Open the browser and make sure the DOMate extension is loaded and connected",
+            "tab": "Run domate tab list to see available tabs",
+            "timeout": "Raise the limit with --timeout 30, or check whether the page is blocked",
+            "config": "Check that config.json is valid JSON, or run domate config reset",
+            "port": "Use another port: domate serve --port 8790",
+            "debug": "Set DOMATE_DEBUG=1 to see the full traceback",
+            "selector": "Run domate dom outline to list clickable elements and their indexes"
+        }
+    },
+    "field": {
+        "server": "Server",
+        "uptime": "Uptime",
+        "version": "Version",
+        "browser": "Browser",
+        "conn": "Transport",
+        "tabs": "Tabs",
+        "selected": "Selected",
+        "seq": "Seq",
+        "id": "ID",
+        "title": "Title",
+        "url": "URL",
+        "flags": "Flags",
+        "tag": "Tag",
+        "type": "Type",
+        "text": "Text",
+        "state": "State",
+        "n": "#",
+        "rect": "Rect",
+        "idx": "Idx",
+        "classes": "Classes",
+        "visible": "Visible",
+        "enabled": "Enabled",
+        "value": "Value",
+        "attrs": "Attributes",
+        "viewport": "Viewport",
+        "scroll": "Scroll",
+        "lang": "Lang",
+        "counts": "Counts",
+        "time": "Time",
+        "event": "Event",
+        "target": "Target",
+        "size": "Window",
+        "path": "Path",
+        "hint": "Hint"
+    },
+    "flag": {
+        "active": "active",
+        "pinned": "pinned",
+        "selected": "selected",
+        "disabled": "disabled",
+        "hidden": "hidden",
+        "visible": "visible",
+        "checked": "checked"
+    },
+    "tab": {
+        "flag": {
+            "active": "active",
+            "pinned": "pinned",
+            "selected": "selected"
+        }
+    },
+    "arg": {
+        "selector": "Element selector: css / text= / xpath= / numeric index",
+        "index": "Pick the Nth match (1-based)",
+        "json": "Emit JSON (for scripts/AI)",
+        "tab": "Target tab: id / seq / title fragment; defaults to the selected tab",
+        "timeout": "Command timeout in seconds",
+        "lang": "Language: zh-CN / en-US",
+        "port": "Local service port (overrides config.json)",
+        "color": "Color: auto / always / never"
+    },
+    "msg": {
+        "daemon_stopped": "Local service stopped",
+        "daemon_not_running": "Local service was not running",
+        "daemon_down": "Local service is not running",
+        "status_title": "Status",
+        "browser_offline": "Extension not connected: open the browser and enable the DOMate extension",
+        "browser_short": "disconnected",
+        "browser_connected": "connected",
+        "config_title": "Config file {path}",
+        "config_saved": "Saved {key} = {value}",
+        "config_reset": "Configuration restored to defaults",
+        "doctor_title": "Environment check",
+        "doctor_ok": "All checks passed",
+        "doctor_failed": "Problems: {names}",
+        "no_tab": "No tabs available",
+        "tab_total": "{count} tab(s)",
+        "tab_selected": "Selected tab #{id} {title}",
+        "tab_created": "Opened tab #{id} {url}",
+        "tab_closed": "Closed {count} tab(s): {ids}",
+        "tab_activated": "Activated tab #{id} {title}",
+        "tab_title_set": "Title set to: {title}",
+        "tab_reloaded": "Tab reloaded",
+        "tab_stopped": "Loading stopped",
+        "tree_title": "DOM tree ({count} nodes)",
+        "truncated": "Output truncated ({count} nodes); narrow it with --depth or --selector",
+        "outline_empty": "No interactive elements found",
+        "outline_hint": "{count} interactive element(s). Act by index: domate click 3",
+        "empty_text": "Target has no text",
+        "attr_missing": "No attribute {name} on element",
+        "no_match": "No matching elements",
+        "match_count": "{count} element(s) matched",
+        "wait_found": "Condition met ({elapsed} ms)",
+        "wait_timeout": "Timed out after {timeout}s",
+        "clicked": "Clicked {detail}",
+        "typed": "Typed {count} character(s) {detail}",
+        "key_sent": "Sent key {keys}",
+        "hovered": "Hovered {detail}",
+        "scrolled": "Scrolled, Y = {y}",
+        "selected": "Selected option {value}",
+        "checked": "Checked",
+        "unchecked": "Unchecked",
+        "focused": "Focused {detail}",
+        "filled": "Filled {count} field(s)",
+        "js_type": "Return type: {type}",
+        "navigated": "Opened {url} {title}",
+        "reloaded": "Page reloaded",
+        "page_counts": "links {links} / forms {forms} / images {images} / elements {elements}",
+        "shot_saved": "Screenshot saved: {path} ({size} bytes)",
+        "console_empty": "No console output captured",
+        "events_empty": "No page events captured",
+        "help_not_found": "No such command: {topic}",
+        "help_try_overview": "Run domate help to list all commands",
+        "guide_missing": "Guide not found: {path}",
+        "interrupted": "Interrupted",
+        "internal": "Unexpected error: {error}",
+        "install_title": "Install the extension",
+        "install_steps": [
+            "Open chrome://extensions in Chrome/Edge and enable Developer mode",
+            "Click Load unpacked and pick the extension folder of this project",
+            "Click the badge and confirm it shows connected (start the service first: domate serve)"
+        ]
+    },
+    "help": {
+        "title": "{name} {version} · drive the browser from your terminal",
+        "intro": "Read page structure, click, type and inject scripts from the command line. Commands are forwarded to the browser extension through a local service.",
+        "usage": "Usage",
+        "tips_title": "Typical workflow",
+        "tips": [
+            "List pages with domate tab list, select one with domate tab use 2",
+            "Run domate dom outline to get indexes, then domate click 3",
+            "Inspect structure with domate dom tree --depth 4, read text with domate dom text \"css=.price\"",
+            "Evaluate with domate js \"document.title\", inject long scripts with domate js @script.js",
+            "Add --json to any command for machine-readable output"
+        ],
+        "more": "Full guide: domate help --guide   Per-command help: domate help <command>",
+        "options": "Options",
+        "examples": "Examples",
+        "related": "Related",
+        "group": {
+            "start": "Service & config",
+            "tab": "Tabs",
+            "dom": "Read the page",
+            "act": "Interact",
+            "script": "Scripts",
+            "page": "Page & capture"
+        },
+        "quick": [
+            "domate tab list",
+            "domate dom outline",
+            "domate click 3",
+            "domate dom text \"css=h1\""
+        ]
+    },
+    "cmd": {
+        "serve": {
+            "brief": "Start the local service (foreground)",
+            "desc": "Starts the HTTP + WebSocket local service. You rarely need this manually: every other command auto-starts it in the background.",
+            "opt": {
+                "foreground": "Run in foreground (default)",
+                "daemon": "Run silently in background (used by auto-start)"
+            },
+            "examples": [
+                "serve",
+                "serve --port 8790"
+            ],
+            "related": [
+                "status",
+                "stop"
+            ]
+        },
+        "stop": {
+            "brief": "Stop the local service",
+            "desc": "Shuts down the background service; the extension connection drops with it.",
+            "examples": [
+                "stop"
+            ]
+        },
+        "status": {
+            "brief": "Show service and browser connection status",
+            "desc": "Displays port, uptime, extension connection and tab count.",
+            "examples": [
+                "status",
+                "status --json"
+            ]
+        },
+        "doctor": {
+            "brief": "Run an environment check",
+            "desc": "Checks Python version, config file, port, service, extension connection and log directory.",
+            "examples": [
+                "doctor"
+            ]
+        },
+        "version": {
+            "brief": "Show version",
+            "desc": "Prints version and build time.",
+            "examples": [
+                "version"
+            ]
+        },
+        "config": {
+            "brief": "Read or write configuration",
+            "desc": "No argument lists everything; get/set read or write a single dotted key; reset restores defaults.",
+            "arg": {
+                "action": "list / get / set / reset",
+                "key": "Dotted key such as language or server.port",
+                "value": "Value to write"
+            },
+            "examples": [
+                "config",
+                "config get language",
+                "config set language en-US",
+                "config set server.port 8790"
+            ],
+            "related": [
+                "status"
+            ]
+        },
+        "help": {
+            "brief": "Show help",
+            "desc": "Without arguments shows the command overview; with a command name shows detailed usage; --guide prints the full guide.",
+            "arg": {
+                "topic": "Command name, e.g. click or tab list"
+            },
+            "opt": {
+                "guide": "Print the full guide"
+            },
+            "examples": [
+                "help",
+                "help click",
+                "help tab list",
+                "help --guide"
+            ]
+        },
+        "tab": {
+            "brief": "Tab management (list/use/new/close/...)"
+        },
+        "tab_list": {
+            "brief": "List all tabs",
+            "desc": "Shows seq, ID, title, URL and flags. The seq can be used with tab use / tab close.",
+            "examples": [
+                "tab list",
+                "tab list --json"
+            ]
+        },
+        "tab_current": {
+            "brief": "Show the selected tab",
+            "desc": "Shows ID, title, URL, window size and load state of the selected tab.",
+            "examples": [
+                "tab current"
+            ]
+        },
+        "tab_use": {
+            "brief": "Select a tab",
+            "desc": "Makes a tab the default target for later commands. Accepts an ID, a seq, or a title/URL fragment.",
+            "arg": {
+                "target": "Tab ID, seq, or title/URL fragment"
+            },
+            "examples": [
+                "tab use 2",
+                "tab use 123456",
+                "tab use github"
+            ],
+            "related": [
+                "tab list"
+            ]
+        },
+        "tab_new": {
+            "brief": "Open a new tab",
+            "desc": "Opens a tab, activated by default. Use --background to stay in the background, --select to make it the default target.",
+            "arg": {
+                "url": "URL to open, defaults to about:blank"
+            },
+            "opt": {
+                "background": "Open in background",
+                "pinned": "Pin the tab",
+                "window": "Open in a new window",
+                "select": "Make it the default target"
+            },
+            "examples": [
+                "tab new https://example.com",
+                "tab new https://example.com --background --select"
+            ],
+            "related": [
+                "goto",
+                "tab close"
+            ]
+        },
+        "tab_close": {
+            "brief": "Close tabs",
+            "desc": "Closes the given IDs; without arguments closes the selected tab. --others closes everything else, --right closes tabs to the right.",
+            "arg": {
+                "ids": "Tab IDs to close"
+            },
+            "opt": {
+                "others": "Close all other tabs",
+                "right": "Close tabs to the right"
+            },
+            "examples": [
+                "tab close",
+                "tab close 123 124",
+                "tab close --others"
+            ],
+            "related": [
+                "tab list"
+            ]
+        },
+        "tab_activate": {
+            "brief": "Activate a tab",
+            "desc": "Brings the tab to the front and makes it the default target.",
+            "arg": {
+                "target": "Tab ID or seq, defaults to the selected tab"
+            },
+            "examples": [
+                "tab activate 2"
+            ]
+        },
+        "tab_title": {
+            "brief": "Set the tab title",
+            "desc": "Rewrites document.title. The Reading/Acting/Running prefix added during commands is restored automatically.",
+            "arg": {
+                "title": "New title"
+            },
+            "examples": [
+                "tab title Processing"
+            ]
+        },
+        "tab_reload": {
+            "brief": "Reload the tab",
+            "desc": "Reloads the current tab; --hard bypasses the cache.",
+            "opt": {
+                "hard": "Hard reload"
+            },
+            "examples": [
+                "tab reload",
+                "tab reload --hard"
+            ]
+        },
+        "tab_stop": {
+            "brief": "Stop loading",
+            "desc": "Aborts the current page load.",
+            "examples": [
+                "tab stop"
+            ]
+        },
+        "dom": {
+            "brief": "Read page structure (tree/outline/text/...)"
+        },
+        "dom_tree": {
+            "brief": "Print a compact DOM tree",
+            "desc": "Renders the page as an indented element tree, skipping script/style noise. Great for a quick structural overview.",
+            "opt": {
+                "depth": "Max depth, default 3",
+                "max": "Max nodes, defaults to output.max_nodes"
+            },
+            "examples": [
+                "dom tree",
+                "dom tree --depth 5",
+                "dom tree \"css=#main\" --depth 4"
+            ],
+            "related": [
+                "dom outline",
+                "dom text"
+            ]
+        },
+        "dom_outline": {
+            "brief": "List interactive elements with indexes",
+            "desc": "Scans links, buttons, inputs and clickable areas, tags each with an index. Then act by index: domate click 3.",
+            "opt": {
+                "max": "Max items, default 300",
+                "all": "Include hidden and disabled elements"
+            },
+            "examples": [
+                "dom outline",
+                "dom outline --all",
+                "dom outline --json"
+            ],
+            "related": [
+                "click",
+                "type"
+            ]
+        },
+        "dom_html": {
+            "brief": "Read element HTML",
+            "desc": "Prints outerHTML of the match; without a selector prints the whole document.",
+            "examples": [
+                "dom html",
+                "dom html \"css=#app\"",
+                "dom html \"//table[1]\""
+            ],
+            "related": [
+                "dom text"
+            ]
+        },
+        "dom_text": {
+            "brief": "Read element text",
+            "desc": "Prints visible text (innerText) with blank lines collapsed.",
+            "examples": [
+                "dom text \"css=h1\"",
+                "dom text \"text=Price\""
+            ],
+            "related": [
+                "dom html"
+            ]
+        },
+        "dom_find": {
+            "brief": "List matching elements",
+            "desc": "Lists every match with seq, tag, text, rect and visibility so you can pick --index.",
+            "opt": {
+                "limit": "Max items, default 30"
+            },
+            "examples": [
+                "dom find \"css=.item\"",
+                "dom find \"text=Delete\" --limit 10"
+            ]
+        },
+        "dom_attr": {
+            "brief": "Read an attribute",
+            "desc": "Reads one attribute such as href, src, data-id or aria-label.",
+            "arg": {
+                "name": "Attribute name"
+            },
+            "examples": [
+                "dom attr \"css=a.logo\" href",
+                "dom attr \"css=input\" placeholder"
+            ]
+        },
+        "dom_count": {
+            "brief": "Count matching elements",
+            "desc": "Prints the match count; useful for assertions and pagination checks.",
+            "examples": [
+                "dom count \"css=.item\"",
+                "dom count \"text=Next\""
+            ]
+        },
+        "dom_info": {
+            "brief": "Show element details",
+            "desc": "Prints tag, id, classes, rect, visibility, enabled state, text, value and all attributes.",
+            "examples": [
+                "dom info \"css=#submit\"",
+                "dom info 3"
+            ]
+        },
+        "dom_wait": {
+            "brief": "Wait for an element or text",
+            "desc": "Polls until the condition holds or the timeout expires. Useful for async rendering, loading spinners and closing dialogs.",
+            "opt": {
+                "text": "Wait until this text appears",
+                "gone": "Invert: wait until it disappears"
+            },
+            "examples": [
+                "dom wait \"css=.result\" --timeout 10",
+                "dom wait --text \"Payment succeeded\"",
+                "dom wait \"css=.loading\" --gone"
+            ]
+        },
+        "click": {
+            "brief": "Click an element",
+            "desc": "Scrolls the element into view then dispatches a full mouse sequence (pointerdown/mousedown/mouseup/click). Supports double click, right click and forced clicks. Events are synthetic, so isTrusted=false.",
+            "opt": {
+                "double": "Double click",
+                "right": "Right click (contextmenu)",
+                "force": "Skip visibility checks",
+                "wait_nav": "Wait for navigation afterwards"
+            },
+            "examples": [
+                "click \"text=Sign in\"",
+                "click \"css=#submit\" --wait-nav",
+                "click 3",
+                "click \"css=.item\" --index 2 --double"
+            ],
+            "related": [
+                "dom outline",
+                "type"
+            ]
+        },
+        "type": {
+            "brief": "Type into an input",
+            "desc": "Focuses the element, writes the text and fires input/change (React/Vue friendly). Clears the field by default. Use @file to read long text from a file.",
+            "arg": {
+                "text": "Text to type; @file reads from a file"
+            },
+            "opt": {
+                "append": "Append instead of clearing",
+                "submit": "Press Enter afterwards",
+                "delay": "Milliseconds between keystrokes"
+            },
+            "examples": [
+                "type \"css=#q\" \"DOMate\"",
+                "type \"css=input[name=password]\" \"@pwd.txt\" --submit"
+            ],
+            "related": [
+                "fill",
+                "key"
+            ]
+        },
+        "key": {
+            "brief": "Send a key",
+            "desc": "Sends keys to the focused element. Combos: Enter, Escape, Tab, Ctrl+A, Ctrl+Shift+Enter, ArrowDown.",
+            "arg": {
+                "keys": "Key or combo"
+            },
+            "examples": [
+                "key Enter",
+                "key \"Ctrl+A\"",
+                "key Escape"
+            ],
+            "related": [
+                "type"
+            ]
+        },
+        "hover": {
+            "brief": "Hover an element",
+            "desc": "Dispatches mouseover/mouseenter/mousemove to open menus and tooltips.",
+            "examples": [
+                "hover \"css=.menu\""
+            ]
+        },
+        "scroll": {
+            "brief": "Scroll the page",
+            "desc": "Scrolls an element into view, by pixels, or to top/bottom.",
+            "opt": {
+                "by": "Scroll by pixels (negative = up)",
+                "top": "Scroll to top",
+                "bottom": "Scroll to bottom",
+                "smooth": "Smooth scrolling"
+            },
+            "examples": [
+                "scroll \"css=#footer\"",
+                "scroll --by 800",
+                "scroll --bottom"
+            ]
+        },
+        "select": {
+            "brief": "Choose a dropdown option",
+            "desc": "Selects a <select> option by value, label (--label) or index (--option-index) and fires change.",
+            "arg": {
+                "value": "Option value"
+            },
+            "opt": {
+                "label": "Match by option text",
+                "option_index": "Match by option index (0-based)"
+            },
+            "examples": [
+                "select \"css=#city\" 310000",
+                "select \"css=#city\" --label Shanghai"
+            ]
+        },
+        "check": {
+            "brief": "Check a checkbox/radio",
+            "desc": "Sets the control to checked (no-op when already checked).",
+            "examples": [
+                "check \"css=#agree\""
+            ]
+        },
+        "uncheck": {
+            "brief": "Uncheck a checkbox",
+            "desc": "Sets the control to unchecked.",
+            "examples": [
+                "uncheck \"css=#subscribe\""
+            ]
+        },
+        "focus": {
+            "brief": "Focus an element",
+            "desc": "Calls focus() so subsequent keystrokes land on it.",
+            "examples": [
+                "focus \"css=#search\""
+            ]
+        },
+        "fill": {
+            "brief": "Fill multiple fields",
+            "desc": "Fills several fields at once using selector=value pairs. Each field is focused, cleared, written and fired.",
+            "arg": {
+                "pairs": "One or more selector=value pairs"
+            },
+            "examples": [
+                "fill \"#user=admin\" \"#pwd=123456\"",
+                "fill \"css=input[name=email]=a@b.com\""
+            ]
+        },
+        "js": {
+            "brief": "Inject and run JavaScript",
+            "desc": "Runs code in the page's main world and returns the last expression. Page globals are accessible; DOM results are stringified. Use @file for long scripts.",
+            "arg": {
+                "code": "JavaScript code; @file reads from a file"
+            },
+            "opt": {
+                "isolated": "Run in the isolated world (no page globals)"
+            },
+            "examples": [
+                "js \"document.title\"",
+                "js \"document.querySelectorAll('a').length\"",
+                "js @script.js",
+                "js \"window.scrollTo(0, 9999)\""
+            ],
+            "related": [
+                "eval",
+                "dom text"
+            ]
+        },
+        "eval": {
+            "brief": "Evaluate an expression",
+            "desc": "Shorthand for js, aimed at reading a single value.",
+            "arg": {
+                "code": "Expression to evaluate"
+            },
+            "examples": [
+                "eval \"location.href\"",
+                "eval \"document.cookie\""
+            ]
+        },
+        "page": {
+            "brief": "Page overview",
+            "desc": "Prints URL, title, readyState, viewport, scroll position, language and counts of links/forms/images/elements.",
+            "examples": [
+                "page",
+                "page --json"
+            ],
+            "related": [
+                "dom tree"
+            ]
+        },
+        "goto": {
+            "brief": "Navigate to a URL",
+            "desc": "Navigates the current tab and waits for load by default.",
+            "arg": {
+                "url": "Target URL"
+            },
+            "opt": {
+                "no_wait": "Do not wait for load"
+            },
+            "examples": [
+                "goto https://example.com",
+                "goto https://example.com --no-wait"
+            ],
+            "related": [
+                "tab new"
+            ]
+        },
+        "back": {
+            "brief": "Go back",
+            "desc": "Navigates back in history, 1 step by default.",
+            "opt": {
+                "steps": "Number of steps"
+            },
+            "examples": [
+                "back",
+                "back --steps 2"
+            ]
+        },
+        "forward": {
+            "brief": "Go forward",
+            "desc": "Navigates forward in history, 1 step by default.",
+            "opt": {
+                "steps": "Number of steps"
+            },
+            "examples": [
+                "forward"
+            ]
+        },
+        "reload": {
+            "brief": "Reload the page",
+            "desc": "Reloads the page; --hard bypasses the cache.",
+            "opt": {
+                "hard": "Hard reload"
+            },
+            "examples": [
+                "reload",
+                "reload --hard"
+            ]
+        },
+        "shot": {
+            "brief": "Take a screenshot",
+            "desc": "Captures the visible area of the tab into an image file. Without a path it lands in the screenshots folder.",
+            "arg": {
+                "path": "Output path, auto-named by default"
+            },
+            "opt": {
+                "format": "png or jpeg",
+                "quality": "JPEG quality 1-100"
+            },
+            "examples": [
+                "shot",
+                "shot out/page.png",
+                "shot out/page.jpg --format jpeg"
+            ],
+            "related": [
+                "page"
+            ]
+        },
+        "console": {
+            "brief": "Read page console output",
+            "desc": "Returns recently captured console output (collection starts at page load). --clear empties the buffer.",
+            "opt": {
+                "clear": "Clear after reading",
+                "limit": "Max entries"
+            },
+            "examples": [
+                "console",
+                "console --limit 50 --clear"
+            ]
+        },
+        "events": {
+            "brief": "Show recorded page events",
+            "desc": "Lists user clicks, inputs and submits so you can verify the previous step took effect.",
+            "opt": {
+                "clear": "Clear after reading",
+                "limit": "Max entries"
+            },
+            "examples": [
+                "events",
+                "events --limit 20"
+            ]
+        }
+    }
+}
