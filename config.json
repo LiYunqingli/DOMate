@@ -10,7 +10,15 @@
         "keepalive_seconds": 15,
         "silence_seconds": 0,
         "log_level": "info",
-        "log_file": "logs/domate.log"
+        "log_file": "logs/domate.log",
+        "log_json": "logs/domate.jsonl",
+        "log_max_mb": 8,
+        "log_keep": 3
+    },
+    "dashboard": {
+        "host": "127.0.0.1",
+        "port": 8899,
+        "window": 30000
     },
     "command": {
         "timeout": 30,

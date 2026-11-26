@@ -30,8 +30,20 @@ DEFAULTS = {
         # 多久收不到插件的任何字节就判定连接已死（秒）。0 = 自动
         # （保活间隔的 4 倍，且不低于 30 秒）。设太小会误杀被节流的插件。
         "silence_seconds": 0,
+        # 日志级别：debug / info / warn / error。info 及以上都会落盘。
         "log_level": "info",
-        "log_file": "logs/domate.log"
+        # 人类可读文本日志（tail 用）；结构化 JSONL 才是分析用的主数据。
+        "log_file": "logs/domate.log",
+        "log_json": "logs/domate.jsonl",
+        # 单个日志文件超过多少 MB 切一份，最多保留几份旧档。
+        "log_max_mb": 8,
+        "log_keep": 3
+    },
+    "dashboard": {
+        "host": "127.0.0.1",
+        "port": 8899,
+        # 分析窗口：只对最近 N 条事件做聚合，避免日志涨到几十万行后页面卡死。
+        "window": 30000
     },
     "command": {
         "timeout": 30,
