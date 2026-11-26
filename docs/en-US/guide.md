@@ -131,15 +131,59 @@ read      dom tree|outline|html|text|find|attr|count|info|wait
 interact  click type key hover scroll select check uncheck focus fill
 script    js / eval
 page      page goto back forward reload shot console events
+logs      log serve|stats|tail|path|clear
 ```
 
-## 6. Configuration
+## 6. Logs and the dashboard
+
+Every event is written twice:
+
+```
+logs/domate.jsonl   structured, one JSON per line — the dashboard reads this
+logs/domate.log     human-readable text — for tail / grep
+```
+
+Common fields: `ts / t / lv / cat / ev / src / pid`. Per category:
+
+```
+cat=net   method path status bytes dur_ms poll remote       HTTP requests
+cat=cmd   action ok dur_ms code tab tab_title cid retry     command dispatch, one per attempt
+cat=ws    cid kind tabs error                              connection lifecycle
+cat=cli   argv exit ok dur_ms cwd                          terminal invocations
+cat=sys   msg                                              start, stop, bind failures
+```
+
+A single command produces `cli/invoke` → `net/http` → `cmd/rpc` → `cmd/dispatch`,
+so you can follow one action end to end with `--q <action>` or the command ranking panel.
+
+The dashboard is read-only and does not need the service running:
+
+```
+python main.py log serve --open
+```
+
+It shows KPIs (volume, failure rate, P50/P95/P99, events per minute), a stacked
+timeline by level, level and category splits, a latency histogram, command ranking
+(failure rate + P95), a weekday × hour heatmap, HTTP status codes, a live log stream,
+a paged event table, failures, silent gaps, clients, tabs and the slowest calls.
+Filter by level / category / keyword / time range / polling / failures, and export
+the current selection as CSV. New lines arrive over SSE; the page reconnects by itself.
+
+Rotation is controlled by `server.log_max_mb` (8 MB) and `server.log_keep` (3);
+`dashboard.window` caps how many events stay in memory (30000 by default).
+
+## 7. Configuration
 
 ```
 language             zh-CN / en-US
 server.port          8765 by default
 server.token         when set, the extension must use the same token
 server.auto_start    auto-spawn the service
+server.log_level     debug / info / warn / error
+server.log_json      structured log path, logs/domate.jsonl
+server.log_max_mb    rotate after this size
+dashboard.port       dashboard port, 8899 by default
+dashboard.window     events kept in memory
 command.timeout      default timeout in seconds
 command.retry        retries on timeout (set 0 for mutating commands)
 tab.status_title     toggle the title prefix
@@ -155,7 +199,7 @@ python main.py config reset
 
 Change the port in the extension options too.
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 E_NO_BROWSER  extension not connected — start the service, then click Reconnect in the popup.
 E_DAEMON_DOWN service down — run doctor, check the port.
@@ -164,7 +208,7 @@ E_ELEMENT     element missing or invisible — check with dom find, or use --for
 E_TIMEOUT     page stuck — raise --timeout or run tab stop.
 E_PERM        restricted page (chrome://) — cannot be scripted.
 
-## 8. Limitations
+## 9. Limitations
 
 - Synthetic events (isTrusted=false); strict anti-bot pages may reject them.
 - Screenshots cover the visible viewport only.

@@ -14,7 +14,8 @@
 - **页面读取**：紧凑 DOM 树、可交互元素清单（带索引）、HTML / 文本 / 属性 / 位置尺寸 / 页面概览。
 - **交互执行**：点击（含双击/右键/强制）、输入（React/Vue 受控组件可用）、按键组合、悬停、滚动、下拉选择、勾选、批量填表。
 - **脚本注入**：主世界执行，可读写页面全局变量，返回值为 JSON 可序列化的结果。
-- **可观测**：捕获页面 console 输出与用户事件，支持截图。
+- **可观测**：每条 HTTP 请求、命令分发（含每次重试）、连接生命周期、CLI 调用都写成结构化事件，
+  自带一个实时日志看板；同时捕获页面 console 输出与用户事件，支持截图。
 - **多语言**：终端文案、帮助文档全部走语言包，内置 `zh-CN` / `en-US`。
 - **零第三方依赖**：只用 Python 标准库（含自己实现的极简 WebSocket 服务端），Windows / Linux / macOS 通用。
 
@@ -104,6 +105,34 @@ python main.py shot out/page.png
 - **事件补连**：切标签、切窗口、增删标签页都会顺便补连一次。
 - `python main.py up` 可显式预热，`python main.py status` 能看到重连次数与上次断开时间。
 
+## 日志与看板
+
+每条事件写两份：`logs/domate.jsonl`（结构化，一行一个 JSON）和 `logs/domate.log`（人看的文本）。
+事件固定带 `ts / t / lv / cat / ev / src / pid`，按分类补字段：
+
+| 分类 | 事件 | 关键字段 |
+| --- | --- | --- |
+| `net` | `http` | method / path / status / bytes / dur_ms / poll |
+| `cmd` | `rpc`、`dispatch` | action / ok / dur_ms / code / tab / tab_title / cid / retry |
+| `ws` | `connect`、`disconnect`、`silent`… | cid / kind / tabs / error |
+| `cli` | `invoke` | argv / exit / dur_ms / cwd |
+| `sys` | `listen`、`stop`、`bind_failed`… | msg |
+
+一条命令会串起 `cli/invoke` → `net/http` → `cmd/rpc` → `cmd/dispatch`，用 `--q <action>` 就能跟完整链路。
+
+```bash
+python main.py log serve --open     # 实时看板（只读，不需要服务在跑）
+python main.py log stats --since 1h # 终端里看 KPI / 分类 / 命令排行 / 最近失败
+python main.py log tail -f --cat cmd
+python main.py log path
+python main.py log clear            # 归档（重命名，不删除）
+```
+
+看板包含 KPI（失败率、P50/P95/P99、近 60 秒速率）、级别堆叠时间线、级别/分类分布、耗时直方图、
+命令排行、星期 × 小时热力图、HTTP 状态码、实时日志流、可翻页事件表、失败明细、静默期、
+客户端与标签页统计、最慢命令；支持按级别/分类/关键字/时间范围/轮询/失败筛选与 CSV 导出，
+新日志通过 SSE 推送。日志超过 `server.log_max_mb` 自动轮转，内存窗口由 `dashboard.window` 控制。
+
 ## 选择器
 
 | 写法 | 含义 |
@@ -174,11 +203,17 @@ lib/
     act_cmd.py          交互
     script_cmd.py       脚本注入
     page_cmd.py         导航/截图/日志
+    log_cmd.py          日志看板/统计/tail/归档
     sys_cmd.py          服务/配置/自检/帮助
+  logbook.py            结构化日志（JSONL + 文本镜像 + 轮转）
   selector.py           选择器语法解析
   i18n.py               语言包
   config.py / store.py  配置与本地状态
   output.py             终端输出（颜色/表格/JSON）
+logview/                日志看板（stdlib HTTP + SSE + 手写前端）
+  parser.py             JSONL/文本解析、增量 tail、聚合
+  server.py             看板服务与 API
+  web/                  单页前端（index.html / app.css / app.js）
 extension/              浏览器插件（MV3）
   background.js         长连接、标签页调度、脚本注入、截图
   engine.js             页面侧 DOM 引擎（读取与合成事件）

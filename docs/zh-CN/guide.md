@@ -249,7 +249,54 @@ eval   同 js，面向「取一个值」
 page / goto / back / forward / reload / shot / console / events
 ```
 
-## 六、配置
+日志
+
+```
+log serve     打开实时看板（--open 自动开浏览器，--port 换端口）
+log stats     终端看 KPI、分类、命令排行、最近失败
+log tail      -n 条数 / -f 跟踪 / --level / --cat / --q
+log path      日志文件路径、大小、轮转档
+log clear     归档（重命名，不删除），-y 跳过确认
+```
+
+## 六、日志与看板
+
+每条事件会同时写两份文件：
+
+```
+logs/domate.jsonl   结构化事件，一行一个 JSON，看板的数据源
+logs/domate.log     人类可读文本，tail / grep 用
+```
+
+JSONL 里固定带 `ts / t / lv / cat / ev / src / pid`，其余字段按事件类型补：
+
+```
+cat=net   method path status bytes dur_ms poll remote       HTTP 请求
+cat=cmd   action ok dur_ms code tab tab_title cid retry     命令分发（含每次重试）
+cat=ws    cid kind tabs error                               连接生命周期
+cat=cli   argv exit ok dur_ms cwd                           终端调用
+cat=sys   msg                                              启动、退出、绑定失败
+```
+
+一条命令从 CLI 到浏览器再回来，会产生 `cli/invoke` → `net/http` → `cmd/rpc` →
+`cmd/dispatch` 几条事件，用 `--q <action>` 或看板的「命令排行」串起来看。
+
+看板本身是只读的，不需要服务在跑：
+
+```
+python main.py log serve --open
+```
+
+页面能力：KPI（总量/失败率/P50-P95-P99/近 60 秒速率）、按级别堆叠的时间线、
+级别与分类分布、耗时直方图、命令排行（失败率 + P95）、星期 × 小时热力图、
+HTTP 状态码、实时日志流、可加载更多的全量事件表、失败明细、静默期、客户端与
+标签页统计、最慢命令；支持按级别/分类/关键字/时间范围/是否含轮询/只看失败筛选，
+可导出当前筛选结果为 CSV。新日志通过 SSE 推送，断线自动重连。
+
+日志轮转由 `server.log_max_mb`（默认 8MB）与 `server.log_keep`（默认 3 份）控制；
+`dashboard.window` 决定内存里保留多少条事件（默认 30000），日志再大页面也不卡。
+
+## 七、配置
 
 config.json 常用项：
 
@@ -258,6 +305,11 @@ language              终端语言 zh-CN / en-US
 server.port           服务端口，默认 8765
 server.token          访问令牌，非空时插件需填同样的值
 server.auto_start     命令执行时是否自动拉起服务
+server.log_level      日志级别 debug / info / warn / error
+server.log_json       结构化日志路径，默认 logs/domate.jsonl
+server.log_max_mb     单个日志文件超过多少 MB 轮转
+dashboard.port        看板端口，默认 8899
+dashboard.window      看板内存窗口条数
 command.timeout       默认命令超时（秒）
 command.retry         超时重试次数（读命令幂等，写命令建议设 0）
 tab.status_title      是否在标题栏显示「读取中/操作中/执行中」
@@ -276,7 +328,7 @@ python main.py config reset
 
 换端口后插件设置页的端口要同步改。
 
-## 七、排错
+## 八、排错
 
 E_NO_BROWSER    插件没连上。看插件图标是否 ON；先 `python main.py serve` 再点插件「重新连接」。
 E_DAEMON_DOWN   服务没起来。`python main.py doctor` 看端口是否被占。
@@ -293,7 +345,7 @@ E_PERM          chrome:// 等受限页面，插件无权注入。
 可以据此判断是服务重启过还是浏览器回收了插件的后台线程。服务端日志 `logs/domate.log` 里
 每次 `ws connected / ws disconnected` 都有记录。
 
-## 八、限制
+## 九、限制
 
 - 合成的鼠标/键盘事件 isTrusted=false，强风控站点（银行、部分登录）可能拒绝；这类需要真实输入通道。
 - 截图只有可视区域。
