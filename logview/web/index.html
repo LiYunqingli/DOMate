@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOMate 日志分析</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">◆</span>
+    <div class="titles">
+      <h1>DOMate 日志分析</h1>
+      <p class="sub" id="subtitle">正在连接…</p>
+    </div>
+  </div>
+  <div class="top-right">
+    <span class="live"><i id="liveDot" class="dot wait"></i><span id="liveText">连接中</span></span>
+    <button id="pauseBtn" class="btn" title="暂停实时推送，便于查看历史">暂停</button>
+    <button id="refreshBtn" class="btn" title="立即重新拉取快照">刷新</button>
+    <a id="csvBtn" class="btn ghost" href="/api/export.csv" title="导出当前筛选结果为 CSV">导出 CSV</a>
+  </div>
+</header>
+
+<section class="filters">
+  <div class="seg" id="rangeSeg">
+    <button data-range="900">15 分钟</button>
+    <button data-range="3600">1 小时</button>
+    <button data-range="21600">6 小时</button>
+    <button data-range="86400">24 小时</button>
+    <button data-range="0" class="on">全部</button>
+  </div>
+  <div class="chips" id="lvChips">
+    <span class="chips-label">级别</span>
+    <button class="chip lv-debug" data-lv="debug">debug</button>
+    <button class="chip lv-info on" data-lv="info">info</button>
+    <button class="chip lv-warn on" data-lv="warn">warn</button>
+    <button class="chip lv-error on" data-lv="error">error</button>
+  </div>
+  <div class="chips" id="catChips">
+    <span class="chips-label">分类</span>
+    <button class="chip" data-cat="cmd">cmd</button>
+    <button class="chip" data-cat="net">net</button>
+    <button class="chip" data-cat="ws">ws</button>
+    <button class="chip" data-cat="cli">cli</button>
+    <button class="chip" data-cat="browser">browser</button>
+    <button class="chip" data-cat="sys">sys</button>
+  </div>
+  <div class="search">
+    <input id="q" type="search" placeholder="搜索 action / 标签页 / 错误码 / 文本…" autocomplete="off">
+  </div>
+  <label class="check" title="默认隐藏 /health、/poll 这类保活请求">
+    <input type="checkbox" id="pollChk"> 含轮询
+  </label>
+  <label class="check">
+    <input type="checkbox" id="failChk"> 只看失败
+  </label>
+  <span class="spacer"></span>
+  <span id="windowInfo" class="muted"></span>
+</section>
+
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <div class="grid">
+    <section class="panel span-2" id="p-timeline">
+      <header>
+        <h2>事件时间线</h2>
+        <span class="hint" id="timelineHint">按级别堆叠，红点为失败</span>
+        <span class="spacer"></span>
+        <span class="muted" id="timelineInfo"></span>
+      </header>
+      <div class="chart" id="timelineChart"></div>
+    </section>
+
+    <section class="panel" id="p-levels">
+      <header><h2>级别分布</h2><span class="spacer"></span><span class="muted" id="levelInfo"></span></header>
+      <div class="bar-stack" id="levelBar"></div>
+      <div class="legend" id="levelLegend"></div>
+    </section>
+
+    <section class="panel" id="p-cats">
+      <header><h2>分类分布</h2><span class="hint">点击筛选</span></header>
+      <div class="hbars" id="catChart"></div>
+    </section>
+
+    <section class="panel" id="p-latency">
+      <header><h2>命令耗时分布</h2><span class="spacer"></span><span class="muted" id="latencyInfo"></span></header>
+      <div class="cols" id="latencyChart"></div>
+    </section>
+
+    <section class="panel span-2" id="p-actions">
+      <header><h2>命令排行</h2><span class="hint">次数 · 失败率 · P95 耗时</span></header>
+      <div class="action-list" id="actionChart"></div>
+    </section>
+
+    <section class="panel" id="p-heat">
+      <header><h2>活跃热力图</h2><span class="hint">星期 × 小时</span></header>
+      <div class="heat" id="heatChart"></div>
+    </section>
+
+    <section class="panel" id="p-status">
+      <header><h2>HTTP 状态码</h2><span class="spacer"></span><span class="muted" id="statusInfo"></span></header>
+      <div class="hbars" id="statusChart"></div>
+    </section>
+
+    <section class="panel span-2" id="p-stream">
+      <header>
+        <h2>实时日志流</h2>
+        <span class="hint" id="streamInfo">最新 300 条</span>
+        <span class="spacer"></span>
+        <label class="check tiny"><input type="checkbox" id="autoScroll" checked> 自动滚动</label>
+      </header>
+      <div class="stream" id="stream"></div>
+    </section>
+
+    <section class="panel span-3" id="p-table">
+      <header>
+        <h2>全量事件表</h2>
+        <span class="hint" id="tableInfo"></span>
+        <span class="spacer"></span>
+        <button class="btn small" id="moreBtn">加载更多</button>
+      </header>
+      <div class="tablewrap" id="table"></div>
+    </section>
+
+    <section class="panel span-2" id="p-errors">
+      <header><h2>失败与错误</h2><span class="hint">点击看详情</span></header>
+      <div class="tablewrap short" id="errorTable"></div>
+    </section>
+
+    <section class="panel" id="p-gaps">
+      <header><h2>静默期</h2><span class="hint">超过 5 分钟无日志</span></header>
+      <div class="tablewrap short" id="gapTable"></div>
+    </section>
+
+    <section class="panel" id="p-clients">
+      <header><h2>浏览器客户端</h2></header>
+      <div class="tablewrap short" id="clientTable"></div>
+    </section>
+
+    <section class="panel" id="p-tabs">
+      <header><h2>标签页</h2></header>
+      <div class="tablewrap short" id="tabTable"></div>
+    </section>
+
+    <section class="panel" id="p-slow">
+      <header><h2>最慢命令</h2></header>
+      <div class="tablewrap short" id="slowTable"></div>
+    </section>
+  </div>
+</main>
+
+<aside class="drawer" id="drawer" hidden>
+  <header>
+    <h2 id="drawerTitle">事件详情</h2>
+    <button class="btn small" id="drawerClose">关闭</button>
+  </header>
+  <pre id="drawerBody"></pre>
+</aside>
+
+<div class="tip" id="tip" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
