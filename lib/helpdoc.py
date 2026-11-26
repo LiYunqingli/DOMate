@@ -34,6 +34,7 @@ GROUPS = [
     ]),
     ("help.group.script", ["js", "eval"]),
     ("help.group.page", ["page", "goto", "back", "forward", "reload", "shot", "console", "events"]),
+    ("help.group.log", ["log serve", "log stats", "log tail", "log path", "log clear"]),
 ]
 
 

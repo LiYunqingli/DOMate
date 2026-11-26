@@ -93,7 +93,12 @@
         "service_registered": "已注册",
         "service_running": "正在运行",
         "service_detail": "配置文件",
-        "autostart": "开机自启"
+        "autostart": "开机自启",
+        "log_window": "时间范围",
+        "events": "事件数",
+        "fail": "失败",
+        "latency": "耗时",
+        "category": "分类"
     },
     "flag": {
         "active": "活动",
@@ -203,7 +208,17 @@
         "autostart_off": "开机自启：未注册（domate service install 可注册，之后不用再管服务）",
         "kind_startup": "登录启动项",
         "kind_systemd": "systemd 用户服务",
-        "kind_launchd": "launchd 用户代理"
+        "kind_launchd": "launchd 用户代理",
+        "log_empty": "没有日志：{path}",
+        "log_stats_title": "日志统计（已载入 {n} 条）",
+        "log_cats": "分类分布",
+        "log_actions": "命令排行",
+        "log_recent_errors": "最近失败",
+        "log_open_hint": "打开看板：python main.py log serve --open",
+        "log_path_title": "日志文件",
+        "log_clear_title": "将归档以下文件（不删除）：",
+        "log_clear_confirm": "确认无误后加 -y 执行：python main.py log clear -y",
+        "log_archived": "已归档：{path}"
     },
     "help": {
         "title": "{name} {version} · 终端控制浏览器",
@@ -228,7 +243,8 @@
             "act": "交互操作",
             "script": "脚本",
             "page": "页面与截图",
-            "service": "后台服务"
+            "service": "后台服务",
+            "log": "日志"
         },
         "quick": [
             "domate tab list",
@@ -890,6 +906,92 @@
             "related": [
                 "service-start",
                 "service-stop"
+            ]
+        },
+        "log": {
+            "brief": "日志：看板 / 统计 / tail / 归档",
+            "desc": "结构化日志相关操作。每条事件同时写 logs/domate.jsonl（分析用）和 logs/domate.log（人看）。",
+            "examples": [
+                "log serve --open",
+                "log stats",
+                "log tail -f"
+            ]
+        },
+        "log_serve": {
+            "brief": "打开实时日志看板",
+            "desc": "启动本地看板服务（只读日志，不影响正在运行的服务）。浏览器里可按级别/分类/关键字筛选，查看时间线、耗时分布、命令排行、HTTP 状态、热力图、标签页、客户端与错误明细，新日志通过 SSE 实时推送到页面。端口默认取 config.dashboard.port，可用全局 --port 覆盖（此时该端口只用于看板）。",
+            "opt": {
+                "host": "监听地址（默认 127.0.0.1）",
+                "window": "内存中保留的事件条数（默认取 config.dashboard.window）",
+                "open": "启动后自动打开浏览器"
+            },
+            "examples": [
+                "log serve --open",
+                "log serve --port 8900 --window 50000"
+            ],
+            "related": [
+                "log stats",
+                "log tail"
+            ]
+        },
+        "log_stats": {
+            "brief": "终端里看日志统计",
+            "desc": "不进浏览器，直接输出 KPI、分类分布、命令排行和最近的失败记录。",
+            "opt": {
+                "since": "只看最近一段时间：15m / 2h / 3d",
+                "window": "分析窗口事件条数"
+            },
+            "examples": [
+                "log stats",
+                "log stats --since 1h"
+            ],
+            "related": [
+                "log serve",
+                "log tail"
+            ]
+        },
+        "log_tail": {
+            "brief": "滚动查看原始事件",
+            "desc": "按时间顺序打印事件；-f 持续跟踪新日志，可配合级别/分类/关键字过滤。",
+            "opt": {
+                "lines": "显示最近多少条（默认 40）",
+                "follow": "持续跟踪新日志",
+                "level": "只看某个级别",
+                "cat": "只看某个分类：cmd / net / ws / cli / browser / sys",
+                "q": "关键字过滤"
+            },
+            "examples": [
+                "log tail -n 20",
+                "log tail -f --cat cmd",
+                "log tail --level error"
+            ],
+            "related": [
+                "log stats",
+                "log serve"
+            ]
+        },
+        "log_path": {
+            "brief": "列出日志文件位置与大小",
+            "desc": "显示 JSONL 与文本日志的绝对路径、大小，以及轮转出来的旧档。",
+            "examples": [
+                "log path"
+            ],
+            "related": [
+                "log stats"
+            ]
+        },
+        "log_clear": {
+            "brief": "归档日志（重命名，不删除）",
+            "desc": "把当前日志改名成 domate.log.<时间>.bak 之类的归档文件后重新开始，方便保留现场。不带 -y 只打印计划。",
+            "opt": {
+                "yes": "跳过确认，直接归档"
+            },
+            "examples": [
+                "log clear",
+                "log clear -y"
+            ],
+            "related": [
+                "log path"
             ]
         }
     }

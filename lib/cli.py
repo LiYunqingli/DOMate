@@ -13,9 +13,10 @@
 import argparse
 import os
 import sys
+import time
 
-from . import helpdoc
-from .commands import (act_cmd, dom_cmd, page_cmd, script_cmd, service_cmd,
+from . import helpdoc, logbook
+from .commands import (act_cmd, dom_cmd, log_cmd, page_cmd, script_cmd, service_cmd,
                        sys_cmd, tab_cmd)
 from .config import Config
 from .context import Ctx
@@ -95,7 +96,7 @@ def build_parser(i18n):
     )
     subparsers = parser.add_subparsers(dest="command", metavar="<命令>")
 
-    for module in (tab_cmd, dom_cmd, act_cmd, script_cmd, page_cmd, service_cmd):
+    for module in (tab_cmd, dom_cmd, act_cmd, script_cmd, page_cmd, service_cmd, log_cmd):
         module.register(subparsers, common)
     sys_cmd.register(subparsers, common)
 
@@ -151,22 +152,51 @@ def main(argv=None):
     ctx = Ctx(config, i18n, out, args, Rpc(config, i18n, notify=out.note), state)
     ctx.parsers = common["parsers"]
 
+    started = time.time()
     try:
-        return int(args.handler(ctx) or 0)
+        code = int(args.handler(ctx) or 0)
+        _log_cli(config, argv, code, started)
+        return code
     except DomateError as exc:
         _report(out, i18n, exc)
-        return EXIT_CODES.get(exc.code, 1)
+        code = EXIT_CODES.get(exc.code, 1)
+        _log_cli(config, argv, code, started, exc.code, exc.message(i18n))
+        return code
     except KeyboardInterrupt:
         out.write("")
         out.warn(i18n.t("msg.interrupted"))
+        _log_cli(config, argv, 130, started, "E_INTERRUPT")
         return 130
     except BrokenPipeError:
         return 0
     except Exception as exc:  # noqa: BLE001 - 顶层兜底，避免抛栈吓人
+        _log_cli(config, argv, 1, started, "E_INTERNAL", str(exc))
         if os.environ.get("DOMATE_DEBUG"):
             raise
         out.error(i18n.t("msg.internal", error=exc), i18n.t("err.hint.debug"))
         return 1
+
+
+def _log_cli(config, argv, code, started, err_code=None, error=None):
+    """记录一条 CLI 调用。客户端侧日志，和服务端日志能对上同一段时间线。"""
+    try:
+        book = logbook.get(config, source="cli")
+        fields = {
+            "argv": " ".join(str(a) for a in argv),
+            "exit": int(code),
+            "ok": int(code) == 0,
+            "dur_ms": round((time.time() - started) * 1000, 1),
+            "cwd": os.getcwd(),
+            "json": "--json" in argv,
+        }
+        if err_code:
+            fields["code"] = err_code
+        if error:
+            fields["error"] = error
+        book.event("info" if int(code) == 0 else "warn", "cli", "invoke",
+                   "%s -> %s" % (fields["argv"], code), **fields)
+    except Exception:
+        pass
 
 
 def _report(out, i18n, exc):

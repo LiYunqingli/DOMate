@@ -93,7 +93,12 @@
         "service_registered": "Registered",
         "service_running": "Running",
         "service_detail": "Definition",
-        "autostart": "Autostart"
+        "autostart": "Autostart",
+        "log_window": "Span",
+        "events": "Events",
+        "fail": "Failures",
+        "latency": "Latency",
+        "category": "Category"
     },
     "flag": {
         "active": "active",
@@ -203,7 +208,17 @@
         "autostart_off": "Autostart: not registered (run domate service install to stop worrying about the server)",
         "kind_startup": "login item",
         "kind_systemd": "systemd user service",
-        "kind_launchd": "launchd user agent"
+        "kind_launchd": "launchd user agent",
+        "log_empty": "No logs yet: {path}",
+        "log_stats_title": "Log statistics ({n} events loaded)",
+        "log_cats": "Categories",
+        "log_actions": "Commands",
+        "log_recent_errors": "Recent failures",
+        "log_open_hint": "Open the dashboard: python main.py log serve --open",
+        "log_path_title": "Log files",
+        "log_clear_title": "These files will be archived (not deleted):",
+        "log_clear_confirm": "Re-run with -y to proceed: python main.py log clear -y",
+        "log_archived": "Archived: {path}"
     },
     "help": {
         "title": "{name} {version} · drive the browser from your terminal",
@@ -228,7 +243,8 @@
             "act": "Interact",
             "script": "Scripts",
             "page": "Page & capture",
-            "service": "Background service"
+            "service": "Background service",
+            "log": "Logs"
         },
         "quick": [
             "domate tab list",
@@ -890,6 +906,92 @@
             "related": [
                 "service-start",
                 "service-stop"
+            ]
+        },
+        "log": {
+            "brief": "Logs: dashboard / stats / tail / archive",
+            "desc": "Structured logging. Every event is written to logs/domate.jsonl (for analysis) and logs/domate.log (for humans).",
+            "examples": [
+                "log serve --open",
+                "log stats",
+                "log tail -f"
+            ]
+        },
+        "log_serve": {
+            "brief": "Open the live log dashboard",
+            "desc": "Starts a local read-only dashboard. Filter by level/category/keyword, inspect timeline, latency, command ranking, HTTP status, heatmap and errors; new log lines are pushed over SSE.",
+            "opt": {
+                "host": "Bind address (default 127.0.0.1)",
+                "window": "Events kept in memory (defaults to config.dashboard.window)",
+                "open": "Open the browser after start"
+            },
+            "examples": [
+                "log serve --open",
+                "log serve --port 8900 --window 50000"
+            ],
+            "related": [
+                "log stats",
+                "log tail"
+            ]
+        },
+        "log_stats": {
+            "brief": "Print log statistics in the terminal",
+            "desc": "KPI, category split, command ranking and recent failures without leaving the terminal.",
+            "opt": {
+                "since": "Only the last period: 15m / 2h / 3d",
+                "window": "Analysis window size"
+            },
+            "examples": [
+                "log stats",
+                "log stats --since 1h"
+            ],
+            "related": [
+                "log serve",
+                "log tail"
+            ]
+        },
+        "log_tail": {
+            "brief": "Stream raw events",
+            "desc": "Print events in time order; -f follows new lines, with level/category/keyword filters.",
+            "opt": {
+                "lines": "How many recent lines (default 40)",
+                "follow": "Follow new lines",
+                "level": "Filter by level",
+                "cat": "Filter by category: cmd / net / ws / cli / browser / sys",
+                "q": "Keyword filter"
+            },
+            "examples": [
+                "log tail -n 20",
+                "log tail -f --cat cmd",
+                "log tail --level error"
+            ],
+            "related": [
+                "log stats",
+                "log serve"
+            ]
+        },
+        "log_path": {
+            "brief": "Show log file locations and sizes",
+            "desc": "Prints absolute paths, sizes and rotated archives.",
+            "examples": [
+                "log path"
+            ],
+            "related": [
+                "log stats"
+            ]
+        },
+        "log_clear": {
+            "brief": "Archive logs (rename, never delete)",
+            "desc": "Renames the current logs to domate.log.<time>.bak and starts fresh. Without -y it only prints the plan.",
+            "opt": {
+                "yes": "Skip confirmation"
+            },
+            "examples": [
+                "log clear",
+                "log clear -y"
+            ],
+            "related": [
+                "log path"
             ]
         }
     }
