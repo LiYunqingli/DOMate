@@ -26,6 +26,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from . import logbook
 from .errors import DomateError
 from .hub import Hub
 from .ws import WSConnection, WSError
@@ -42,41 +43,28 @@ MAX_IDLE_PINGS = 4
 
 
 class _Logger(object):
-    def __init__(self, path, level="info"):
-        self.path = path
-        self.level = level
-        self.lock = threading.Lock()
-        if path:
-            try:
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-            except OSError:
-                self.path = None
+    """兼容层：老代码只用到 info/warn/error，这里转成结构化事件。
 
-    def _write(self, level, text):
-        if self.level == "error" and level != "error":
-            return
-        line = "%s [%s] %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), level.upper(), text)
-        if self.path:
-            with self.lock:
-                try:
-                    with open(self.path, "a", encoding="utf-8") as fp:
-                        fp.write(line + "\n")
-                except OSError:
-                    pass
-        else:
-            try:
-                print(line)
-            except Exception:
-                pass
+    真正的写盘在 lib/logbook.py：一条 JSON（分析用）+ 一行文本（人看）。
+    """
 
-    def info(self, text):
-        self._write("info", text)
+    def __init__(self, book):
+        self.book = book
 
-    def warn(self, text):
-        self._write("warn", text)
+    def _write(self, level, text, cat="sys", ev="note", **fields):
+        self.book.event(level, cat, ev, text, **fields)
 
-    def error(self, text):
-        self._write("error", text)
+    def info(self, text, cat="sys", ev="note", **fields):
+        self._write("info", text, cat, ev, **fields)
+
+    def warn(self, text, cat="sys", ev="note", **fields):
+        self._write("warn", text, cat, ev, **fields)
+
+    def error(self, text, cat="sys", ev="note", **fields):
+        self._write("error", text, cat, ev, **fields)
+
+    def event(self, level, cat, ev, text="", **fields):
+        self._write(level, text, cat, ev, **fields)
 
 
 class DomateServer(ThreadingHTTPServer):
@@ -129,16 +117,55 @@ class Handler(BaseHTTPRequestHandler):
         return self.server.hub
 
     def log_message(self, fmt, *args):
-        # 屏蔽 http.server 默认的 stderr 日志，统一走自己的 logger
-        if self.server.log:
-            self.server.log.info("%s %s" % (self.address_string(), fmt % args))
+        # http.server 默认往 stderr 打一行「IP - - [时间] "GET /x" 200」，
+        # 格式固定且拿不到耗时。这里全部改走 _log_access，见下。
+        pass
+
+    def log_request(self, code="-", size="-"):
+        # 由 send_response() 调用：只记下状态与字节数，等请求结束时统一落盘，
+        # 这样一条请求只产生一条事件，且能带上真实耗时。
+        self._req_status = code
+        self._req_size = size
 
     def handle_one_request(self):
         """客户端半路断开是常态（Ctrl+C、超时放弃），不要让它冒泡成堆栈。"""
+        self._req_start = time.time()
+        self._req_status = None
+        self._req_size = "-"
+        self._req_path = ""
+        self._skip_access = False
         try:
             BaseHTTPRequestHandler.handle_one_request(self)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             self.close_connection = True
+        finally:
+            self._log_access()
+
+    def _log_access(self):
+        """记录一条 HTTP 访问事件：方法、路径、状态、耗时、字节数。"""
+        log = self.server.log
+        if not log or getattr(self, "_skip_access", False):
+            return
+        # 连接建立后没发请求就断了（HTTP/1.1 keep-alive 的常态），没有记录价值
+        if not getattr(self, "command", None):
+            return
+        path = getattr(self, "_req_path", None) or urlparse(getattr(self, "path", "") or "").path or "/"
+        status = self._req_status
+        if status is None:
+            # 连接在写出响应前就断了（浏览器取消、CLI Ctrl+C）
+            status = 0
+        try:
+            dur = (time.time() - self._req_start) * 1000.0
+        except (AttributeError, TypeError):
+            dur = 0.0
+        # /health 与 /poll 是保活/长轮询，量大且信息量低，打 poll 标记让看板一键过滤
+        polling = path in ("/health", "/poll", "/status")
+        log.event("info", "net", "http",
+                  "%s %s -> %s" % (getattr(self, "command", "?"), path, status),
+                  method=getattr(self, "command", ""), path=path, status=status,
+                  bytes=self._req_size if isinstance(self._req_size, int) else 0,
+                  dur_ms=round(dur, 1), poll=polling,
+                  remote=self.address_string())
 
     def _auth_ok(self):
         token = self.server.token
@@ -189,6 +216,7 @@ class Handler(BaseHTTPRequestHandler):
         self.server.touch()
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        self._req_path = path
 
         if path == "/ws":
             return self._handle_ws(parsed)
@@ -222,6 +250,7 @@ class Handler(BaseHTTPRequestHandler):
         self.server.touch()
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        self._req_path = path
 
         if not self._auth_ok():
             return self._send_json({"ok": False, "error": "unauthorized"}, 401)
@@ -241,7 +270,9 @@ class Handler(BaseHTTPRequestHandler):
         except DomateError as exc:
             return self._send_json({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, 200)
         except Exception as exc:  # noqa: BLE001
-            self.server.log.error("POST %s failed: %s\n%s" % (path, exc, traceback.format_exc()))
+            self.server.log.error("POST %s failed: %s" % (path, exc),
+                                  cat="net", ev="error", path=path, method="POST",
+                                  error=str(exc), trace=traceback.format_exc()[-1200:])
             return self._send_json({"ok": False, "error": {"code": "E_INTERNAL", "message": str(exc)}}, 500)
 
         return self._send_json({"ok": False, "error": "not found"}, 404)
@@ -250,6 +281,7 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_rpc(self):
         payload = self._read_json()
         action = payload.get("action")
+        started = time.time()
         if not action:
             raise DomateError("E_REQUEST", message="缺少 action")
         timeout = payload.get("timeout")
@@ -261,12 +293,29 @@ class Handler(BaseHTTPRequestHandler):
                 timeout=timeout,
                 retry=payload.get("retry"),
             )
+            try:
+                size = len(json.dumps(data, ensure_ascii=False, default=str))
+            except Exception:  # noqa: BLE001 - 只用于统计，算不出来不影响返回
+                size = 0
+            self.server.log.event("info", "cmd", "rpc", "%s ok" % action,
+                                  action=action, ok=True, tab=payload.get("tab"),
+                                  dur_ms=round((time.time() - started) * 1000, 1),
+                                  bytes=size, retry=payload.get("retry"))
             return self._send_json({"ok": True, "data": data})
         except DomateError as exc:
+            self.server.log.event("warn", "cmd", "rpc", "%s failed: %s" % (action, exc.code),
+                                  action=action, ok=False, code=exc.code,
+                                  tab=payload.get("tab"),
+                                  dur_ms=round((time.time() - started) * 1000, 1))
             return self._send_json({
                 "ok": False,
                 "error": {"code": exc.code, "message": exc.message(self.hub.i18n)},
             }, 200)
+        except Exception as exc:  # noqa: BLE001
+            self.server.log.event("error", "cmd", "rpc", "%s crashed: %s" % (action, exc),
+                                  action=action, ok=False, code="E_INTERNAL",
+                                  dur_ms=round((time.time() - started) * 1000, 1))
+            raise
 
     def _handle_register(self):
         payload = self._read_json()
@@ -312,10 +361,14 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------ WS
     def _handle_ws(self, parsed):
+        # WebSocket 是长连接，阻塞到断开才返回，不能按普通 HTTP 请求计时
+        self._skip_access = True
         if not self._auth_ok():
             self.send_response(401)
             self.send_header("Content-Length", "0")
             self.end_headers()
+            self.server.log.warn("ws rejected: bad token from %s" % self.address_string(),
+                                 cat="ws", ev="reject")
             return
         upgrade = (self.headers.get("Upgrade") or "").lower()
         if upgrade != "websocket":
@@ -325,19 +378,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             conn.handshake(self.headers)
         except WSError as exc:
-            self.server.log.warn("ws handshake failed: %s" % exc)
+            self.server.log.warn("ws handshake failed: %s" % exc, cat="ws", ev="handshake",
+                                 error=str(exc))
             self.close_connection = True
             return
 
         client = None
+        connected_at = time.time()
+        reason = "client closed"
         self.close_connection = True
         try:
             # 第一条消息必须是 hello，用于注册身份与标签页快照
             hello = conn.recv_json(timeout=15)
             if hello is None:
+                reason = "no hello within 15s"
                 return
             if hello.get("type") != "hello":
                 conn.send_json({"type": "error", "error": {"code": "E_PROTOCOL", "message": "expect hello"}})
+                reason = "protocol: expect hello"
                 return
 
             client = self.hub.add_client(
@@ -348,8 +406,13 @@ class Handler(BaseHTTPRequestHandler):
             )
             if hello.get("tabs"):
                 self.hub.set_tabs(client.cid, hello.get("tabs"))
-            self.server.log.info("ws connected: %s (%s, %d tabs, 累计重连 %d 次)" % (
-                client.cid, client.kind, len(client.tabs), self.hub.reconnects))
+            self.server.log.info(
+                "ws connected: %s (%s, %d tabs, 累计重连 %d 次)" % (
+                    client.cid, client.kind, len(client.tabs), self.hub.reconnects),
+                cat="ws", ev="connect", cid=client.cid, kind=client.kind,
+                browser=hello.get("browser"), version=hello.get("version"),
+                tabs=len(client.tabs), reconnects=self.hub.reconnects,
+                remote=self.address_string())
 
             conn.send_json({
                 "type": "welcome",
@@ -359,13 +422,22 @@ class Handler(BaseHTTPRequestHandler):
             })
             self._ws_loop(conn, client)
         except (WSError, socket.timeout, OSError) as exc:
-            self.server.log.info("ws closed: %s" % exc)
+            reason = str(exc) or exc.__class__.__name__
+            self.server.log.info("ws closed: %s" % exc, cat="ws", ev="close",
+                                 cid=client.cid if client else None, error=reason)
         except Exception as exc:  # noqa: BLE001
-            self.server.log.error("ws error: %s\n%s" % (exc, traceback.format_exc()))
+            reason = "internal: %s" % exc
+            self.server.log.error("ws error: %s\n%s" % (exc, traceback.format_exc()),
+                                  cat="ws", ev="error",
+                                  cid=client.cid if client else None)
         finally:
             if client is not None:
+                lived = time.time() - connected_at
                 self.hub.remove_client(client.cid)
-                self.server.log.info("ws disconnected: %s" % client.cid)
+                self.server.log.info("ws disconnected: %s (存活 %.0fs)" % (client.cid, lived),
+                                     cat="ws", ev="disconnect", cid=client.cid,
+                                     kind=client.kind, alive_s=round(lived, 1),
+                                     reason=reason)
             try:
                 conn.close()
             except Exception:
@@ -383,7 +455,9 @@ class Handler(BaseHTTPRequestHandler):
                 # 真正的判据是持续多久没收到任何字节。
                 silent = time.time() - conn.last_rx
                 if silent > limit:
-                    self.server.log.warn("ws silent %.0fs, dropping %s" % (silent, client.cid))
+                    self.server.log.warn("ws silent %.0fs, dropping %s" % (silent, client.cid),
+                                         cat="ws", ev="silent", cid=client.cid,
+                                         silent_s=round(silent, 1), limit_s=limit)
                     return
                 try:
                     # 协议层 ping 用于探活，JSON ping 用于让插件侧的 SW 计时器复位
@@ -418,25 +492,34 @@ class Handler(BaseHTTPRequestHandler):
             # 插件的保活回应，收到即说明链路活着（last_seen 已在循环里刷新）
             pass
         elif mtype == "log":
-            self.server.log.info("[browser] %s" % msg.get("text", ""))
+            text = msg.get("text", "")
+            level = str(msg.get("level") or "info").lower()
+            self.server.log.event(level if level in ("debug", "warn", "error") else "info",
+                                  "browser", "console", text, cid=client.cid,
+                                  url=msg.get("url"))
         elif mtype == "hello":
             # 重复 hello 视为重连信息更新
             if msg.get("tabs"):
                 self.hub.set_tabs(client.cid, msg.get("tabs"))
+                self.server.log.debug("ws hello refreshed: %s (%d tabs)" % (
+                    client.cid, len(msg.get("tabs") or [])), cat="ws", ev="hello",
+                    cid=client.cid, tabs=len(msg.get("tabs") or []))
         else:
-            self.server.log.warn("unknown ws message type: %s" % mtype)
+            self.server.log.warn("unknown ws message type: %s" % mtype, cat="ws", ev="unknown",
+                                 mtype=str(mtype), cid=client.cid)
 
 
 def create_server(config, i18n, state):
     """按配置创建服务实例（不启动）。"""
-    hub = Hub(config, i18n, state)
-    log_path = config.get("server.log_file", "")
-    logger = _Logger(config.abs_path(log_path) if log_path else "", config.get("server.log_level", "info"))
+    logger = _Logger(logbook.get(config, source="daemon"))
+    hub = Hub(config, i18n, state, logger=logger)
     host = config.host
     port = config.port
     try:
         server = DomateServer((host, port), Handler, hub, logger, token=config.token)
     except OSError as exc:
+        logger.warn("bind %s:%s failed: %s" % (host, port, exc), cat="sys", ev="bind_failed",
+                    host=host, port=port, error=str(exc))
         raise DomateError("E_PORT", port=port, error=str(exc), hint="port")
     try:
         server.keepalive = int(config.get("server.keepalive_seconds", PING_INTERVAL) or PING_INTERVAL)
@@ -455,7 +538,9 @@ def run(config, i18n, state, foreground=True):
     """启动服务并阻塞，直到收到 /shutdown 或 Ctrl+C。"""
     server = create_server(config, i18n, state)
     host, port = server.server_address[:2]
-    server.log.info("%s %s listening on %s:%s" % (SERVER_NAME, SERVER_VERSION, host, port))
+    server.log.info("%s %s listening on %s:%s" % (SERVER_NAME, SERVER_VERSION, host, port),
+                    cat="sys", ev="listen", host=host, port=port, pid=os.getpid(),
+                    version=SERVER_VERSION, daemon=not foreground)
     if foreground:
         print("%s %s  http://%s:%s  (Ctrl+C 退出)" % (SERVER_NAME, SERVER_VERSION, host, port))
         print("WebSocket: ws://%s:%s/ws" % (host, port))
@@ -466,7 +551,9 @@ def run(config, i18n, state, foreground=True):
     except KeyboardInterrupt:
         pass
     finally:
-        server.log.info("server stopped")
+        server.log.info("server stopped", cat="sys", ev="stop",
+                        uptime_s=round(time.time() - server.started_at, 1),
+                        clients=len(server.hub.clients))
         try:
             server.server_close()
         except Exception:

@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 
+from . import logbook
 from .errors import DomateError
 
 #: 不需要指定标签页的 tab.* 命令
@@ -97,7 +98,7 @@ class Client(object):
 
 
 class Hub(object):
-    def __init__(self, config, i18n, state):
+    def __init__(self, config, i18n, state, logger=None):
         self.config = config
         self.i18n = i18n
         self.state = state
@@ -105,6 +106,8 @@ class Hub(object):
         self.pending = {}
         self._tabs = {}
         self._lock = threading.RLock()
+        # 命令级日志：谁、在哪个标签页、哪条命令、多久、成没成、失败码
+        self.log = logger or logbook.get(config, source="hub")
         # 以下三个字段只用于诊断「为什么刚才卡了一下」：重连计数、最后一次断开时间
         self.created = time.time()
         self.ever_connected = False
@@ -368,7 +371,14 @@ class Hub(object):
 
         last_error = None
         for attempt in range(0, max(1, retries + 1)):
-            client, tab_id = self.route(action, tab)
+            started = time.time()
+            try:
+                client, tab_id = self.route(action, tab)
+            except DomateError as exc:
+                self._log_dispatch(action, params, tab, None, None, attempt, started,
+                                   False, exc.code)
+                raise
+
             cmd_id = "c" + uuid.uuid4().hex[:12]
             pending = Pending(cmd_id, action)
             self.pending[cmd_id] = pending
@@ -385,6 +395,8 @@ class Hub(object):
             if not client.send(message):
                 self.pending.pop(cmd_id, None)
                 last_error = DomateError("E_BROWSER_GONE", hint="browser")
+                self._log_dispatch(action, params, tab, tab_id, client, attempt, started,
+                                   False, last_error.code)
                 continue
 
             try:
@@ -394,11 +406,14 @@ class Hub(object):
 
             if not finished:
                 last_error = DomateError("E_TIMEOUT", action=action, timeout=timeout, hint="timeout")
+                self._log_dispatch(action, params, tab, tab_id, client, attempt, started,
+                                   False, last_error.code)
                 continue  # 超时允许重试（读类命令幂等，写类命令由上层控制 retry=0）
 
             result = pending.result or {}
             if result.get("ok"):
                 data = result.get("data")
+                self._log_dispatch(action, params, tab, tab_id, client, attempt, started, True)
                 # tab.list 用服务端注册表回填，补上序号与选中标记
                 if action == "tab.list" and isinstance(data, dict):
                     self.set_tabs(client.cid, data.get("tabs") or [])
@@ -411,10 +426,42 @@ class Hub(object):
             last_error = DomateError(code, message=err.get("message"))
             if err.get("hint"):
                 last_error.hint = err.get("hint")
+            self._log_dispatch(action, params, tab, tab_id, client, attempt, started,
+                               False, code, error=err.get("message"))
             # 浏览器端明确报错（选择器不存在等）不重试，直接抛
             break
 
         raise last_error or DomateError("E_BROWSER")
+
+    def _log_dispatch(self, action, params, tab_arg, tab_id, client, attempt,
+                      started, ok, code=None, error=None):
+        """一条命令尝试 = 一条日志。失败为 warn，成功为 info；慢命令带 slow 标记。"""
+        dur = (time.time() - started) * 1000.0
+        tab_info = self.find_tab(tab_id) if tab_id is not None else None
+        fields = {
+            "action": action,
+            "ok": bool(ok),
+            "attempt": attempt + 1,
+            "dur_ms": round(dur, 1),
+            "tab": tab_id if tab_id is not None else tab_arg,
+            "cid": client.cid if client else None,
+            "kind": client.kind if client else None,
+            "params": params,
+            "slow": dur >= 1000,
+        }
+        if tab_info:
+            fields["tab_title"] = tab_info.get("title")
+            fields["tab_url"] = tab_info.get("url")
+        if code:
+            fields["code"] = code
+        if error:
+            fields["error"] = error
+        msg = "%s %s" % (action, "ok" if ok else "failed(%s)" % (code or "E_BROWSER"))
+        try:
+            self.log.event("info" if ok else "warn", "cmd", "dispatch", msg, **fields)
+        except Exception:
+            # 日志永远不能影响命令本身
+            pass
 
     def resolve(self, cmd_id, result):
         """插件回传命令结果。"""

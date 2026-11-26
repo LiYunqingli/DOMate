@@ -14,10 +14,19 @@ import time
 import urllib.error
 import urllib.request
 
+from . import logbook
 from .config import ROOT
 from .errors import DaemonError, DomateError
 
 _IS_WIN = os.name == "nt"
+
+
+def _log(config, level, text, **fields):
+    """CLI 侧的辅助事件（拉起服务等）。失败绝不影响主流程。"""
+    try:
+        logbook.get(config, source="cli").event(level, "sys", "spawn", text, **fields)
+    except Exception:
+        pass
 
 
 class Rpc(object):
@@ -109,9 +118,12 @@ class Rpc(object):
         env["PYTHONIOENCODING"] = "utf-8"
         kwargs["env"] = env
         try:
-            subprocess.Popen(cmd, **kwargs)
+            proc = subprocess.Popen(cmd, **kwargs)
         except OSError as exc:
+            _log(self.config, "warn", "spawn failed: %s" % exc, port=self.config.port, error=str(exc))
             raise DaemonError("E_DAEMON_START", port=self.config.port, error=str(exc), hint="daemon")
+        _log(self.config, "info", "daemon spawned (pid=%s)" % proc.pid,
+             port=self.config.port, pid=proc.pid, log=log_path)
         if verbose:
             sys.stderr.write("[domate] daemon spawned, log: %s\n" % log_path)
 
